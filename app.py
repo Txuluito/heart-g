@@ -13,6 +13,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from plotly.subplots import make_subplots
 
+URL_WEB_APP = "https://script.google.com/macros/s/AKfycbyW6E3Quf20DNCtsD9SsxxC4isMxqCzAv6JqKu6LYtuJhRLcfgo00Ay_e3BWg574TUU/exec"
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(page_title="GHB & HR Analyzer", layout="wide")
 st.title("🧪 Bio-Análisis: GHB vs. Frecuencia Cardíaca")
@@ -20,8 +21,6 @@ st.title("🧪 Bio-Análisis: GHB vs. Frecuencia Cardíaca")
 
 def enviar_toma_api(fecha_str, hora_str, cantidad):
     # PEGA AQUÍ LA URL QUE COPIASTE DEL PASO ANTERIOR
-    URL_WEB_APP = "https://script.google.com/macros/s/AKfycbzwwjyvJa73kxoIyl2gAn9Sgtw5tHOKEk7tKXCCVCLy6uPSBFH8D8g_W_HBTtwpMMNu/exec"
-
     payload = {
         "fecha": fecha_str,
         "hora": hora_str,
@@ -40,20 +39,6 @@ def enviar_toma_api(fecha_str, hora_str, cantidad):
             st.error("Error al conectar con la hoja.")
     except Exception as e:
         st.error(f"Fallo de conexión: {e}")
-
-def registrar_toma_excel(cantidad):
-    # Aquí puedes usar gspread o una petición POST a un Google Apps Script
-    # Por ahora, simularemos el feedback visual
-    import datetime
-    ahora_registro = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-
-    # Simulación de guardado (Aquí iría tu código de gspread o requests)
-    # st.write(f"Guardando {cantidad}ml a las {ahora_registro}...")
-
-    st.success(f"✅ Registrada toma de {cantidad}ml - {ahora_registro}")
-    st.balloons()
-    time.sleep(2)
-    st.rerun()  # Recargamos para que los cálculos se actualicen al instante
 
 
 def mediasConsumos():
@@ -88,16 +73,20 @@ def mediasConsumos():
 
 def get_google_fit_data():
     creds = None
+    scopes = ['https://www.googleapis.com/auth/fitness.heart_rate.read']
 
-    # 1. Intentar cargar el token desde Secrets (para la nube)
-    if "google_fit_token" in st.secrets:
-        token_data = json.loads(st.secrets["google_fit_token"])
-        creds = Credentials.from_authorized_user_info(token_data)
+    # 1. INTENTAR CARGAR DESDE SECRETS (Sin que rompa la app si no existen)
+    try:
+        if "google_fit_token" in st.secrets:
+            token_info = json.loads(st.secrets["google_fit_token"])
+            creds = Credentials.from_authorized_user_info(token_info, scopes)
+    except Exception:
+        # Si falla o no existen secrets, no hacemos nada y pasamos al punto 2
+        pass
 
-    # 2. Si no está en secrets, buscar localmente (para desarrollo)
-    elif os.path.exists('.streamlit/token.json'):
-        creds = Credentials.from_authorized_user_file('.streamlit/token.json',
-                                                      ['https://www.googleapis.com/auth/fitness.heart_rate.read'])
+    # 2. SI NO HAY CREDS, BUSCAR ARCHIVO LOCAL (Modo PC)
+    if not creds and os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', scopes)
 
     # 3. Si el token expiró, refrescarlo
     if creds and creds.expired and creds.refresh_token:
@@ -106,9 +95,8 @@ def get_google_fit_data():
 
     # 4. Si no hay credenciales válidas, iniciar flujo (Solo local)
     if not creds or not creds.valid:
-        if os.path.exists('.streamlit/credentials.json'):
-            flow = InstalledAppFlow.from_client_secrets_file('.streamlit/credentials.json',
-                                                             ['https://www.googleapis.com/auth/fitness.heart_rate.read'])
+        if os.path.exists('credentials.json'):
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json',scopes)
             creds = flow.run_local_server(port=0)
         else:
             st.error("No se han encontrado credenciales de Google. Configura los Secrets en Streamlit Cloud.")
@@ -340,13 +328,29 @@ def graficas():
     st.plotly_chart(fig, use_container_width=True)
 
 
+def eliminar_ultima_toma():
+    global e
+    try:
+        # Enviamos la orden a Google
+        respuesta = requests.get(f"{URL_WEB_APP}?action=borrarUltima")
+
+        if "Success" in respuesta.text:
+            st.success("✅ Fila eliminada en Google Sheets.")
+            time.sleep(1.5)
+            st.rerun()  # Recarga la app para actualizar la tabla
+        else:
+            st.error("No hay más datos para borrar o la hoja está vacía.")
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
+
+
 # --- EJECUCIÓN PRINCIPAL ---
 try:
     tabla_excel = get_excel_data()
     tabla_final = get_google_fit_data()
     rellenarDatosSinFrecuencia()
 
-    tab1, tab2 = st.tabs(["📉 Reductor y Planificación", "📊 Gráficas y Frecuencia"])
+    tab1, tab2, tab3 = st.tabs(["📉 Reductor y Planificación", "📊 Gráficas y Frecuencia", "📜 Historial Detallado de Tomas"])
 
     with tab1:
         # 1. CÁLCULOS PREVIOS (Invisibles)
@@ -382,7 +386,7 @@ try:
         placeholder_progreso = st.empty()
         placeholder_mensaje = st.empty()
 
-        # LÓGICA DINÁMICA
+        # --- LÓGICA DINÁMICA DE TIEMPOS ---
         if objetivo > 0:
             intervalo_min = int((24 / (objetivo / dosis)) * 60)
             ultima_toma = tabla_excel['timestamp'].max()
@@ -395,17 +399,24 @@ try:
             col_t2.metric("Llevas sin tomar", f"{int(pasado_mins // 60)}h {int(pasado_mins % 60)}min")
 
             if dif_restante > 0:
-                col_t3.metric("Siguiente dosis en", f"{int(dif_restante // 60)}h {int(dif_restante % 60)}min",
-                              delta="Espera", delta_color="inverse")
+                # Caso: Aún hay que esperar
+                h_res, m_res = int(dif_restante // 60), int(dif_restante % 60)
+                col_t3.metric("Siguiente dosis en", f"{h_res}h {m_res}min", delta="Espera", delta_color="inverse")
+
                 porcentaje = min(max(pasado_mins / intervalo_min, 0.0), 1.0)
                 placeholder_progreso.progress(porcentaje)
                 placeholder_mensaje.warning(f"⏳ **Disponible a las:** {proxima_toma.strftime('%H:%M')}")
                 st.session_state['abrir_registro'] = False
             else:
-                col_t3.metric("Siguiente dosis", "¡LISTO!", delta=f"Hace {int(abs(dif_restante) // 60)}h",
-                              delta_color="normal")
+                # Caso: INTERVALO CUMPLIDO (Calculamos horas y minutos extra)
+                extra_mins_total = abs(dif_restante)
+                h_ext, m_ext = int(extra_mins_total // 60), int(extra_mins_total % 60)
+
+                # Mostramos el delta con formato +Xh Ymin
+                col_t3.metric("Siguiente dosis", "¡LISTO!", delta=f"+{h_ext}h {m_ext}min", delta_color="normal")
+
                 placeholder_progreso.progress(1.0)
-                placeholder_mensaje.success(f"✅ **Intervalo cumplido.** El formulario de registro se ha activado.")
+                placeholder_mensaje.success(f"✅ **Intervalo cumplido.** Llevas {h_ext}h {m_ext}min de margen.")
                 st.session_state['abrir_registro'] = True
 
         # --- SECCIÓN 3: REGISTRO (AUTO-OPEN) ---
@@ -435,6 +446,57 @@ try:
         tabla_final['ghb_active'] = calcularConcentracionDinamica(ka, hl)
         metricas()
         graficas()
+    with tab3:
+        st.subheader("📜 Historial Detallado de Tomas")
 
+        if not tabla_excel.empty:
+            # 1. Preparar los datos
+            df_hist = tabla_excel.copy()
+
+            # Ordenamos cronológicamente para calcular la diferencia correctamente
+            df_hist = df_hist.sort_values('timestamp', ascending=True)
+            df_hist['diff'] = df_hist['timestamp'].diff()
+
+
+            # Función para convertir el tiempo a formato legible
+            def formatear_delta(x):
+                if pd.isnull(x): return "---"
+                total_segundos = int(x.total_seconds())
+                horas = total_segundos // 3600
+                minutos = (total_segundos % 3600) // 60
+                return f"{horas}h {minutos}min"
+
+
+            df_hist['Intervalo Real'] = df_hist['diff'].apply(formatear_delta)
+
+            # 2. Preparar tabla para visualización (más reciente primero)
+            df_display = df_hist.sort_values('timestamp', ascending=False).copy()
+            df_display['Fecha'] = df_display['timestamp'].dt.strftime('%d/%m/%Y')
+            df_display['Hora'] = df_display['timestamp'].dt.strftime('%H:%M')
+            df_display['Cantidad'] = df_display['ml'].apply(lambda x: f"{x:.2f} ml")
+
+            df_final = df_display[['Fecha', 'Hora', 'Cantidad', 'Intervalo Real']]
+
+            st.dataframe(df_final, use_container_width=True, hide_index=True)
+
+            # 3. Métricas de Logros
+            st.markdown("---")
+            col_h1, col_h2 = st.columns(2)
+            df_valid_diffs = df_hist.dropna(subset=['diff'])
+
+            if not df_valid_diffs.empty:
+                media_int_total = df_valid_diffs['diff'].mean()
+                max_int = df_valid_diffs['diff'].max()
+                col_h1.metric("Intervalo Medio Real", formatear_delta(media_int_total))
+                col_h2.metric("Intervalo Máximo (Récord)", formatear_delta(max_int))
+
+            # 4. FUNCIÓN PARA BORRAR ÚLTIMA TOMA
+            st.markdown("---")
+            with st.expander("⚠️ ZONA DE PELIGRO", expanded=False):
+                st.write("¿La última toma es un error?")
+                if st.button("🗑️ BORRAR ÚLTIMA TOMA"):
+                    eliminar_ultima_toma()
+        else:
+            st.info("Aún no hay tomas registradas en el historial.")
 except Exception as e:
     st.error(f"Error crítico: {e}")
