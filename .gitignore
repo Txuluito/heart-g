@@ -1,3 +1,6 @@
 /.streamlit/
-/credentials.json
-/token.json
+/local/credentials.json
+/local/token.json
+/.venv/
+/*pycache*/
+/tabs/__pycache__
