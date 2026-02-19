@@ -27,7 +27,7 @@ def render(df, resumen, media_3d, dosis_habitual):
 
     color = "#2ecc71" if saldo >= 0 else "#e74c3c"
     st.markdown(f"""<div style="border:3px solid {color}; padding:20px; border-radius:15px; text-align:center;">
-                <h1 style="color:{color};">{saldo:.3f} ml</h1><p>SALDO DISPONIBLE</p></div>""", unsafe_allow_html=True)
+                <h1 style="color:{color};">{saldo:.2f} ml</h1><p>SALDO DISPONIBLE</p></div>""", unsafe_allow_html=True)
 
     dosis_t = st.number_input("Dosis deseada (ml)", 0.1, 10.0, float(dosis_habitual))
     if saldo < dosis_t:

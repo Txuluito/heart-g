@@ -13,7 +13,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from plotly.subplots import make_subplots
 
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbyW6E3Quf20DNCtsD9SsxxC4isMxqCzAv6JqKu6LYtuJhRLcfgo00Ay_e3BWg574TUU/exec"
+URL_WEB_APP = "https://script.google.com/macros/s/AKfycbyjfrStGaO5O5j1JMSUFW2aN4u9LPcbe1-Hz96OUUmYMrF0odJ_Txcc40fhGiegCx3j/exec"
 def get_excel_data():
     # Usamos el ID de tu hoja que ya tenías
     SHEET_ID = "18KYPnVSOQF6I2Lm5P1j5nFx1y1RXSmfMWf9jBR2WJ-Q"
@@ -32,9 +32,61 @@ def get_excel_data():
     return df.sort_values('timestamp', ascending=False)
 
 
-def enviar_toma_api( fecha_str, hora_str, cantidad):
-    payload = {"fecha": fecha_str, "hora": hora_str, "ml": cantidad}
+def enviar_toma_api( fecha_str, hora_str, cantidad, saldo=None):
+    payload = {"fecha": fecha_str, "hora": hora_str, "ml": cantidad, "saldo": saldo}
     return requests.post(URL_WEB_APP, json=payload)
+
+def get_plan_history_data():
+    """Obtiene el historial del plan desde Google Sheets."""
+    try:
+        params = {"action": "get_plan_history"}
+        response = requests.get(URL_WEB_APP, params=params, timeout=10)
+        if response.status_code == 200:
+            try:
+                json_response = response.json()
+                if json_response.get('status') == 'success':
+                    data = json_response.get('data', [])
+                    return pd.DataFrame(data) if data else pd.DataFrame()
+            except ValueError:
+                print(f"Error decodificando respuesta JSON de Sheets: {response.text[:100]}")
+    except Exception as e:
+        print(f"Error cargando historial plan: {e}")
+    return pd.DataFrame()
+
+def save_plan_history_data(df):
+    """Guarda el historial del plan en Google Sheets."""
+    try:
+        data_list = df.to_dict(orient='records')
+        payload = {"action": "save_plan_history", "data": data_list}
+        requests.post(URL_WEB_APP, json=payload, timeout=15)
+    except Exception as e:
+        print(f"Error guardando historial plan: {e}")
+
+def get_remote_config():
+    """Obtiene la configuración desde la hoja 'Config'."""
+    try:
+        params = {"action": "get_config"}
+        response = requests.get(URL_WEB_APP, params=params, timeout=15)
+        if response.status_code == 200:
+            try:
+                json_response = response.json()
+                if json_response.get('status') == 'success':
+                    return json_response.get('data', {})
+            except ValueError:
+                print(f"Error decodificando config JSON de Sheets: {response.text[:200]}")
+    except Exception as e:
+        print(f"Error cargando config remota: {e}")
+    return {}
+
+def save_remote_config(data):
+    """Guarda/Actualiza la configuración en la hoja 'Config'."""
+    try:
+        payload = {"action": "save_config", "data": data}
+        requests.post(URL_WEB_APP, json=payload, timeout=15)
+        return True
+    except Exception as e:
+        print(f"Error guardando config remota: {e}")
+        return False
 
 def eliminar_ultima_toma():
     try:
@@ -102,5 +154,5 @@ def get_google_fit_data():
     df = pd.DataFrame(extracted_data)
     if not df.empty:
         df = df.set_index('timestamp').sort_index()
-        df = df.resample('1T').mean().interpolate()
+        df = df.resample('1min').mean().interpolate()
     return df

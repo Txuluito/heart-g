@@ -5,11 +5,6 @@ import logic
 import datetime
 
 def render(df, resumen_bloques, URL_WEB_APP=None):
-    # 1. Recuperar referencia de consumo
-    if len(resumen_bloques) >= 2:
-        consumo_ref = resumen_bloques.iloc[1]['total_ml']
-    else:
-        consumo_ref = 15.0  # Por defecto
 
     # Cargar configuración
     config = logic.load_config()
@@ -35,28 +30,63 @@ def render(df, resumen_bloques, URL_WEB_APP=None):
     # Recuperar fechas del plan
     today = pd.Timestamp.now(tz='Europe/Madrid').date()
     saved_start_date_str = config.get("plan_start_date", str(today))
+    saved_start_amount = config.get("plan_start_amount", 15.0)
+    
     try:
-        saved_start_date = datetime.datetime.strptime(saved_start_date_str, "%Y-%m-%d").date()
+        # Aseguramos que sea string y manejamos posibles formatos
+        d_str = str(saved_start_date_str).strip()
+        if len(d_str) == 8 and d_str.isdigit():
+            saved_start_date = datetime.datetime.strptime(d_str, "%Y%m%d").date()
+        else:
+            saved_start_date = datetime.datetime.strptime(d_str, "%Y-%m-%d").date()
     except ValueError:
         saved_start_date = today
 
-    # --- CÁLCULOS DEL PLAN ---
-    current_day_idx = (today - saved_start_date).days
-    
-    # --- CÁLCULO DE PRESUPUESTO (CON CHECKPOINTS) ---
+    # --- CÁLCULOS DEL PLAN (CONTINUO) ---
+    # Convertir inicio a datetime con zona horaria para precisión de minutos/segundos
+    plan_start_dt = pd.Timestamp(saved_start_date).tz_localize('Europe/Madrid')
     ahora = pd.Timestamp.now(tz='Europe/Madrid')
-    horas_tramo_actual = (ahora - checkpoint_fecha).total_seconds() / 3600
-    tasa_gen_actual = (consumo_ref - saved_rate) / 24
-    ingresos_tramo_actual = horas_tramo_actual * tasa_gen_actual
+    
+    # Tiempo transcurrido desde el inicio del plan en horas
+    horas_desde_inicio = (ahora - plan_start_dt).total_seconds() / 3600
+    
+    # 1. Objetivo Instantáneo: Se reduce cada segundo
+    # Fórmula: Start - (Rate * Dias_Flotantes)
+    dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
+    objetivo_actual_instantaneo = max(0.0, saved_start_amount - (saved_rate * dias_flotantes))
+    
+    # 2. Tasa de generación actual (para proyecciones futuras inmediatas)
+    tasa_gen_actual = objetivo_actual_instantaneo / 24.0
+
+    # --- CÁLCULO DE PRESUPUESTO (INTEGRAL) ---
+    # Calculamos el ingreso acumulado exacto usando la integral de la curva de reducción
+    def calcular_ingreso_acumulado(t_horas, start, rate):
+        # Si es antes del plan, asumimos generación constante al valor inicial
+        if t_horas < 0:
+            return (start / 24.0) * t_horas
+            
+        # Límite donde el objetivo llega a 0
+        t_fin = (start / rate) * 24 if rate > 0 else 999999999
+        t_eff = min(t_horas, t_fin)
+        
+        # Integral: (Start/24)*t - (Rate/1152)*t^2
+        return (start / 24.0) * t_eff - (rate / 1152.0) * (t_eff ** 2)
+
+    # Calculamos ingresos desde el checkpoint hasta ahora
+    t_checkpoint = (checkpoint_fecha - plan_start_dt).total_seconds() / 3600
+    t_ahora = horas_desde_inicio
+    
+    ingresos_tramo_actual = calcular_ingreso_acumulado(t_ahora, saved_start_amount, saved_rate) - \
+                            calcular_ingreso_acumulado(t_checkpoint, saved_start_amount, saved_rate)
     
     if checkpoint_ingresos == 0.0 and checkpoint_fecha_str is None and not df.empty:
-        inicio = df['timestamp'].min()
-        horas_totales = (ahora - inicio).total_seconds() / 3600
-        ingresos_totales = horas_totales * tasa_gen_actual
+        # Fallback para compatibilidad antigua (si no hay plan definido)
+        ingresos_totales = ((ahora - df['timestamp'].min()).total_seconds() / 3600) * (saved_start_amount / 24)
     else:
         ingresos_totales = checkpoint_ingresos + ingresos_tramo_actual
         
-    gastos_totales = df['ml'].sum()
+    # Solo contamos los gastos realizados DESDE el inicio del plan actual
+    gastos_totales = df[df['timestamp'] >= plan_start_dt]['ml'].sum()
     saldo = ingresos_totales - gastos_totales
 
     # --- CONTROL DE TOMAS ---
@@ -81,38 +111,39 @@ def render(df, resumen_bloques, URL_WEB_APP=None):
         if st.button("🚀 ENVIAR REGISTRO", use_container_width=True):
             # GUARDAR CHECKPOINT ANTES DE REGISTRAR
             ahora_reg = pd.Timestamp.now(tz='Europe/Madrid')
-            horas_pasadas = (ahora_reg - checkpoint_fecha).total_seconds() / 3600
-            ingresos_nuevos = horas_pasadas * tasa_gen_actual
-            nuevo_checkpoint_ingresos = checkpoint_ingresos + ingresos_nuevos
+            # Usar el cálculo integral para la precisión
+            t_checkpoint_reg = (checkpoint_fecha - plan_start_dt).total_seconds() / 3600
+            t_ahora_reg = (ahora_reg - plan_start_dt).total_seconds() / 3600
+            ingresos_desde_checkpoint = calcular_ingreso_acumulado(t_ahora_reg, saved_start_amount, saved_rate) - \
+                                        calcular_ingreso_acumulado(t_checkpoint_reg, saved_start_amount, saved_rate)
+            nuevo_checkpoint_ingresos = checkpoint_ingresos + ingresos_desde_checkpoint
             
             logic.save_config({
                 "checkpoint_ingresos": nuevo_checkpoint_ingresos,
                 "checkpoint_fecha": ahora_reg.isoformat()
             })
             
-            res = database.enviar_toma_api( f_sel.strftime('%d/%m/%Y'), h_sel.strftime('%H:%M:%S'), cant)
+            # Calcular el saldo que quedará tras esta toma para guardarlo en el registro
+            # Saldo = (Ingresos hasta ahora) - (Gastos previos + Esta toma)
+            gastos_previos = df[df['timestamp'] >= plan_start_dt]['ml'].sum()
+            saldo_snapshot = nuevo_checkpoint_ingresos - (gastos_previos + cant)
+            
+            res = database.enviar_toma_api( f_sel.strftime('%d/%m/%Y'), h_sel.strftime('%H:%M:%S'), cant, saldo_snapshot)
+            
             if res.status_code == 200:
                 st.success("Registrado correctamente")
                 st.rerun()
 
-    # st.markdown("---")
-    
     # Lógica de Tiempos
     ultima_toma = df['timestamp'].max()
     pasado_mins = (ahora - ultima_toma).total_seconds() / 60
     
-    # Recalcular objetivo para mostrar tiempos teóricos
-    if current_day_idx < 0:
-        reducir_hoy = 0.0
-    else:
-        reducir_hoy = saved_rate * (current_day_idx + 1)
-
-    reducir = min(max(0.0, reducir_hoy), float(consumo_ref))
-    objetivo = max(0.0, consumo_ref - reducir)
+    # Reducción que aplica hoy (solo informativa)
+    reduccion_acumulada = saved_rate * dias_flotantes
     
     # Intervalo teórico (velocidad del plan)
-    if objetivo > 0:
-        intervalo_min = int((24 / (objetivo / saved_dosis)) * 60)
+    if objetivo_actual_instantaneo > 0:
+        intervalo_min = int((24 / (objetivo_actual_instantaneo / saved_dosis)) * 60)
     else:
         intervalo_min = 999999
         
@@ -139,7 +170,7 @@ def render(df, resumen_bloques, URL_WEB_APP=None):
 
     m2.metric("Última toma hace", f"{int(pasado_mins // 60)}h {int(pasado_mins % 60)}min")
     
-    if objetivo > 0:
+    if objetivo_actual_instantaneo > 0:
         m3.metric("Tiempo entre dosis", f"{intervalo_min // 60}h {intervalo_min % 60}min")
     else:
         m3.metric("Tiempo entre dosis", "∞")
@@ -152,9 +183,9 @@ def render(df, resumen_bloques, URL_WEB_APP=None):
 
     # Visualización del Saldo
     if saldo >= 0:
-        m5.metric("Saldo Disponible", f"{saldo:.3f} ml", delta="Disponible", delta_color="normal")
+        m5.metric("Saldo Disponible", f"{saldo:.2f} ml", delta="Disponible", delta_color="normal")
     else:
-        m5.metric("Saldo Disponible", f"{saldo:.3f} ml", delta="-Déficit", delta_color="inverse")
+        m5.metric("Saldo Disponible", f"{saldo:.2f} ml", delta="-Déficit", delta_color="inverse")
 
     # Barra de progreso (Basada en porcentaje de saldo para la siguiente dosis)
     if not es_listo:
@@ -163,59 +194,167 @@ def render(df, resumen_bloques, URL_WEB_APP=None):
     else:
         st.success("🎉 Saldo suficiente para la siguiente dosis")
 
-    # st.markdown("---")
-    #
-    # # --- VISUALIZACIÓN: ESTADO DEL PLAN ---
-    # st.markdown("### 📊 Estado del Plan")
-    #
-    # 2. Configuración de Objetivos (Expander) - MOVIDO AQUÍ
-    with st.expander("⚙️ CONFIGURACIÓN DEL PLAN", expanded=False):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            reduction_rate = st.number_input("Reducción diaria (ml):", 0.0, 5.0, float(saved_rate), 0.05)
-        with c2:
-            plan_start = st.date_input("Fecha Inicio Plan", saved_start_date)
+    # --- TABLA DE SEGUIMIENTO DEL PLAN ---
+    st.markdown("---")
+    
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h1:
+        st.subheader("📅 Historial y Cumplimiento del Plan")
+    with col_h2:
+        mostrar_futuro = st.checkbox("Mostrar días futuros", value=False)
+    
+    # Variable de estado para forzar recálculo desde el botón de configuración
+    force_recalc = st.session_state.get('force_recalc_plan', False)
+    df_seguimiento = logic.calcular_seguimiento_plan(df, config, force_recalc=force_recalc)
+    
+    # Resetear el flag después de usarlo
+    if force_recalc:
+        st.session_state['force_recalc_plan'] = False
+    
+    # Filtro para mostrar/ocultar días futuros
+    hoy_str = pd.Timestamp.now(tz='Europe/Madrid').strftime('%d/%m/%Y')
+    df_display_seguimiento = df_seguimiento.copy()
+    if not mostrar_futuro:
+        df_display_seguimiento = df_display_seguimiento[df_display_seguimiento['Estado'] != "🔮 Futuro"]
+
+    # Estilo: Resaltar el día actual
+    def resaltar_hoy(row):
+        if row['Fecha'] == hoy_str:
+            return ['background-color: rgba(255, 75, 75, 0.1); border-left: 5px solid #ff4b4b'] * len(row)
+        return [''] * len(row)
+
+    # Tabla interactiva
+    event = st.dataframe(
+        df_display_seguimiento.style.apply(resaltar_hoy, axis=1).format({
+            "Objetivo (ml)": "{:.2f}",
+            "Real (ml)": "{:.2f}",
+            "Reducción Plan": "{:.2f}"
+        }),
+        width='stretch',
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row"
+    )
+
+    # Mostrar detalles al seleccionar una fila
+    if event.selection.rows:
+        idx = event.selection.rows[0]
+        selected_row = df_display_seguimiento.iloc[idx]
+        fecha_seleccionada = selected_row['Fecha']
+        objetivo_dia = selected_row['Objetivo (ml)']
         
-        # Lógica de Checkpoint: Si cambia la tasa
-        if reduction_rate != saved_rate:
-            ahora_calc = pd.Timestamp.now(tz='Europe/Madrid')
-            horas_pasadas = (ahora_calc - checkpoint_fecha).total_seconds() / 3600
-            tasa_gen_anterior = (consumo_ref - saved_rate) / 24
-            ingresos_nuevos = horas_pasadas * tasa_gen_anterior
-            nuevo_checkpoint_ingresos = checkpoint_ingresos + ingresos_nuevos
-            
-            logic.save_config({
-                "reduction_rate": reduction_rate,
-                "checkpoint_ingresos": nuevo_checkpoint_ingresos,
-                "checkpoint_fecha": ahora_calc.isoformat()
-            })
-            st.rerun()
+        st.info(f"🔎 Detalles del día: **{fecha_seleccionada}** | Objetivo: {objetivo_dia} ml")
+        
+        # Calcular tasa de generación para ese día (ml/hora)
+        rate_dia = objetivo_dia / 24.0 if objetivo_dia > 0 else 0
+        
+        # Preparar DF completo para calcular diferencias de tiempo correctamente
+        df_sorted = df.sort_values('timestamp', ascending=True).copy()
+        df_sorted['diff_seconds'] = df_sorted['timestamp'].diff().dt.total_seconds()
+        
+        # Filtrar para el día seleccionado
+        mask_dia = df_sorted['timestamp'].dt.strftime('%d/%m/%Y') == fecha_seleccionada
+        df_dia = df_sorted[mask_dia].copy().sort_values('timestamp', ascending=False)
+        
+        if not df_dia.empty:
+            # Funciones auxiliares para columnas calculadas
+            def format_interval(seconds):
+                if pd.isna(seconds): return "---"
+                m = int(seconds // 60)
+                h = m // 60
+                m = m % 60
+                return f"{h}h {m}m"
 
-        if plan_start != saved_start_date:
-            logic.save_config({"plan_start_date": str(plan_start)})
-            st.rerun()
+            def calc_details(row):
+                ml = row['ml']
+                diff = row['diff_seconds']
+                int_real_str = format_interval(diff)
+                
+                if rate_dia <= 0:
+                    return pd.Series([int_real_str, "---", "---", "---"])
+                
+                # Tiempo necesario: (ml / rate) * 3600
+                needed_seconds = (ml / rate_dia) * 3600
+                int_obj_str = format_interval(needed_seconds)
+                
+                if pd.isna(diff):
+                    return pd.Series([int_real_str, int_obj_str, "🏁 Inicio", "---"])
+                
+                # Balance: (Tiempo Real * Tasa) - Consumo
+                generado = (diff / 3600) * rate_dia
+                balance = generado - ml
+                
+                if balance >= -0.05: # Margen de tolerancia
+                    cumple = "✅ Sí"
+                    vote_str = f"+{balance:.2f} ml"
+                else:
+                    cumple = "❌ No"
+                    vote_str = f"{balance:.2f} ml"
+                
+                return pd.Series([int_real_str, int_obj_str, cumple, vote_str])
 
-        # Cálculo de estimaciones para mostrar en el input disabled
-        if reduction_rate > 0:
-            total_days_est = int(consumo_ref / reduction_rate)
-            plan_end_est = plan_start + datetime.timedelta(days=total_days_est)
+            df_dia[['Intervalo Real', 'Int. Necesario', 'Cumple', 'Impacto Vote']] = df_dia.apply(calc_details, axis=1, result_type='expand').values
+
+            df_display_dia = df_dia.copy()
+            df_display_dia['ml'] = df_display_dia['ml'].map('{:.2f}'.format)
+
+            st.dataframe(
+                df_display_dia[['hora', 'ml', 'Intervalo Real', 'Int. Necesario', 'Cumple', 'Impacto Vote']],
+                width='stretch', 
+                hide_index=True
+            )
         else:
-            total_days_est = 0
-            plan_end_est = today
+            st.warning("No hay tomas registradas en este día.")
+
+    # --- CONFIGURACIÓN DEL PLAN ---
+    st.markdown("---")
+    with st.expander("⚙️ CONFIGURACIÓN DEL PLAN", expanded=False):
+        st.info("Define los parámetros iniciales. Al generar, se creará el calendario de reducción.")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            new_start_amount = st.number_input("Consumo Inicial (ml/día)", 0.0, 50.0, float(saved_start_amount))
+            new_start_date = st.date_input("Fecha Inicio Plan", saved_start_date)
+        with c2:
+            new_rate = st.number_input("Reducción diaria (ml)", 0.0, 5.0, float(saved_rate), 0.05)
             
-        with c3:
-            st.date_input(f"Fecha Fin Estimada ({total_days_est} días)", plan_end_est, disabled=True)
+            # Estimación de fin
+            if new_rate > 0 and new_start_amount > 0:
+                dias_est = int(new_start_amount / new_rate)
+                fecha_fin_est = new_start_date + datetime.timedelta(days=dias_est)
+                st.write(f"🏁 Fin estimado: **{fecha_fin_est.strftime('%d/%m/%Y')}** ({dias_est} días)")
+            else:
+                st.write("🏁 Fin estimado: ---")
+
+        # Botón para limpiar el historial y recalcular todo
+        if st.button("♻️ RECALCULAR HISTORIAL COMPLETO", help="Borra los datos guardados y aplica la configuración actual a todos los días pasados."):
+            st.session_state['force_recalc_plan'] = True
+            st.rerun()
+
+        if st.button("💾 GENERAR / ACTUALIZAR PLAN", use_container_width=True):
+            logic.save_config({
+                "plan_start_amount": new_start_amount,
+                "plan_start_date": str(new_start_date),
+                "reduction_rate": new_rate,
+                # Reseteamos checkpoint para evitar inconsistencias grandes al cambiar el plan
+                "checkpoint_ingresos": 0.0, 
+                "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat()
+            })
+            st.success("Plan actualizado correctamente.")
+            st.rerun()
 
     # Cálculo de estimaciones
     if saved_rate > 0:
-        total_days_plan = int(consumo_ref / saved_rate)
+        total_days_plan = int(saved_start_amount / saved_rate)
     else:
         total_days_plan = 0
+    
+    current_day_idx = int(dias_flotantes)
     days_remaining = max(0, total_days_plan - current_day_idx)
 
     # Métricas de Estado del Plan
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Consumo Base", f"{consumo_ref:.2f} ml")
-    col2.metric("Objetivo Hoy", f"{objetivo:.2f} ml", delta=f"-{reducir:.2f} ml", delta_color="inverse")
+    col1.metric("Inicio Plan", f"{saved_start_amount:.2f} ml")
+    col2.metric("Objetivo Actual", f"{objetivo_actual_instantaneo:.2f} ml", delta=f"-{reduccion_acumulada:.2f} ml", delta_color="inverse")
     col3.metric("Reducción Plan", f"{saved_rate:.2f} ml/día")
     col4.metric("Días Restantes", f"{days_remaining} días", help=f"Total plan: {total_days_plan} días")

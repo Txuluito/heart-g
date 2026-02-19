@@ -32,7 +32,7 @@ def render(df):
 
         df_final = df_display[['Fecha', 'Hora', 'Cantidad', 'Intervalo Real']]
 
-        st.dataframe(df_final, use_container_width=True, hide_index=True)
+        st.dataframe(df_final, width='stretch', hide_index=True)
 
         # 3. Métricas de Logros
         st.markdown("---")
@@ -103,7 +103,12 @@ def render(df):
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         st.subheader("📊 Resumen Bloques")
-        st.dataframe(resumen_filtrado, use_container_width=True)
+        st.dataframe(resumen_filtrado.style.format({
+            'total_ml': '{:.2f}',
+            'media_ml': '{:.2f}'
+        }), width='stretch')
     with col_t2:
         st.subheader("🕒 Tomas Filtradas")
-        st.dataframe(df_filtrado[['fecha', 'hora', 'ml']], use_container_width=True, hide_index=True)
+        df_display_filtrado = df_filtrado[['fecha', 'hora', 'ml']].copy()
+        df_display_filtrado['ml'] = df_display_filtrado['ml'].map('{:.2f}'.format)
+        st.dataframe(df_display_filtrado, width='stretch', hide_index=True)
