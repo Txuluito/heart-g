@@ -16,7 +16,7 @@ media_3d = logic.obtener_media_3d(resumen)
 # Interfaz de Tabs
 t1, t2, t3 = st.tabs(["📉 Reductor", "📊 Análisis", "📜 Historial"])
 with t1:
-    tab_reductor.render(df, resumen)
+    tab_reductor.render(df)
 with t2:
     tab_analisis.render(df, resumen, media_3d)
 with t3:
