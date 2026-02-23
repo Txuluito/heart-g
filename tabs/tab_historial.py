@@ -3,12 +3,12 @@ import pandas as pd
 import database
 import time
 import logic
+from config import config
 from logic import ahora
 
 class HistorialTab:
-    def __init__(self, df,config):
+    def __init__(self, df):
         self.df = df
-        self.config=config
 
     def _formatear_delta(self, x):
         if pd.isnull(x): return "---"
@@ -18,7 +18,6 @@ class HistorialTab:
         return f"{horas}h {minutos}min"
 
     def render_tabla_historial(self):
-        st.subheader("📜 Historial Detallado de Tomas")
         if not self.df.empty:
             df_hist = self.df.copy().sort_values('timestamp', ascending=True)
             df_hist['diff'] = df_hist['timestamp'].diff()
@@ -63,13 +62,13 @@ class HistorialTab:
             with c_bal:
                 st.write("Ajuste manual de saldo")
                 # Obtenemos el plan para saber el saldo actual y proponerlo
-                plan = logic.ReductionPlan(self.df, self.config)
+                saldo = logic.saldo(self.df)
 
-                nuevo_saldo = st.number_input("Nuevo Saldo Disponible:", value=plan.saldo, step=0.1, format="%.2f")
+                nuevo_saldo = st.number_input("Nuevo Saldo Disponible:", value=saldo, step=0.1, format="%.2f")
                 if st.button("🔧 Aplicar Ajuste de Saldo"):
                     gastos_totales = self.df['ml'].sum()
                     nuevo_checkpoint_ingresos = nuevo_saldo + gastos_totales
-                    logic.save_config({
+                    database.save_config({
                         "checkpoint_ingresos": nuevo_checkpoint_ingresos,
                         "checkpoint_fecha": ahora.isoformat()
                     })

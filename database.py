@@ -1,17 +1,18 @@
+import logging
+
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os.path
 import time
 import requests
-import plotly.graph_objects as go
 import json
+
 from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from plotly.subplots import make_subplots
+
 
 URL_WEB_APP = "https://script.google.com/macros/s/AKfycbwUNNchR4XdVwAqkwlfRQ17GjrV3WPqx6bNlPiSRwt31FDk_USG2HAsep06JTLa4X_Q/exec"
 def get_excel_data():
@@ -59,6 +60,7 @@ def save_plan_history_data(df):
         print(f"Error guardando historial plan: {e}")
 def get_config():
     """Obtiene la configuración desde la hoja 'Config'."""
+    logging.warning("Cargando configuracion")
     try:
         params = {"action": "get_config"}
         response = requests.get(URL_WEB_APP, params=params, timeout=15)
