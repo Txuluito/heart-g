@@ -74,6 +74,7 @@ def get_config():
     except Exception as e:
         print(f"Error cargando config remota: {e}")
     return {}
+
 def save_config(data):
     """Guarda/Actualiza la configuración en la hoja 'Config'."""
     try:

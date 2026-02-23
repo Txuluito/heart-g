@@ -62,14 +62,12 @@ class HistorialTab:
             with c_bal:
                 st.write("Ajuste manual de saldo")
                 # Obtenemos el plan para saber el saldo actual y proponerlo
-                saldo = logic.saldo(self.df)
-
-                nuevo_saldo = st.number_input("Nuevo Saldo Disponible:", value=saldo, step=0.1, format="%.2f")
+                nuevo_saldo = st.number_input("Nuevo Saldo Disponible:", value=logic.mlAcumulados(), step=0.1, format="%.2f")
                 if st.button("🔧 Aplicar Ajuste de Saldo"):
                     gastos_totales = self.df['ml'].sum()
-                    nuevo_checkpoint_ingresos = nuevo_saldo + gastos_totales
+                    nuevo_checkpoint_ml = nuevo_saldo + gastos_totales
                     database.save_config({
-                        "checkpoint_ingresos": nuevo_checkpoint_ingresos,
+                        "checkpoint_ml": nuevo_checkpoint_ml,
                         "checkpoint_fecha": ahora.isoformat()
                     })
                     st.cache_data.clear()

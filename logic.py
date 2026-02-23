@@ -10,34 +10,26 @@ from config import config
 # Usamos caché para no llamar a Google Sheets en cada interacción (TTL = 10 minutos)
 ahora = pd.Timestamp.now(tz='Europe/Madrid')
 
-def tasaGeneracion():
+# def tasaGeneracion():
+#
+#     fecha_inicio_plan = pd.to_datetime(config.get("plan_start_date")) if config.get("plan_start_date") else ahora
+#     ml_reduccion_diaria = float(config.get("reduction_rate", 0.5))
+#     ml_iniciales_plan = float(config.get("plan_start_amount", 15.0))
+#     horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
+#     dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
+#     objetivo_actual= max(0.0, ml_iniciales_plan - (ml_reduccion_diaria * dias_flotantes))
+#     return objetivo_actual / 24.0
+#
+# def saldo(df):
+#     checkpoint_ml = float(config.get("checkpoint_ml"))
+#     return (checkpoint_ml + mlAcumulados())
 
-    fecha_inicio_plan = pd.to_datetime(config.get("plan_start_date")) if config.get("plan_start_date") else ahora
-    ml_reduccion_diaria = float(config.get("reduction_rate", 0.5))
-    ml_iniciales_plan = float(config.get("plan_start_amount", 15.0))
-    horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
-    dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
-    objetivo_actual= max(0.0, ml_iniciales_plan - (ml_reduccion_diaria * dias_flotantes))
-    return objetivo_actual / 24.0
-
-def saldo(df):
-    fecha_inicio_plan = pd.to_datetime(config.get("plan_start_date")) if config.get("plan_start_date") else ahora
-
-    checkpoint_ingresos = float(config.get("checkpoint_ingresos", 0.0))
-    consumo_total = df[df['timestamp'] >= fecha_inicio_plan]['ml'].sum()
-    return (checkpoint_ingresos + ingresosTramo()) - consumo_total
-
-def ingresosTramo():
-    ml_reduccion_diaria = float(config.get("reduction_rate", 0.5))
-    ml_iniciales_plan = float(config.get("plan_start_amount", 15.0))
-    fecha_inicio_plan = pd.to_datetime(config.get("plan_start_date")) if config.get("plan_start_date") else ahora
-
-    checkpoint_fecha_str = config.get("checkpoint_fecha", None)
-    checkpoint_fecha = pd.to_datetime(checkpoint_fecha_str) if checkpoint_fecha_str else fecha_inicio_plan
-    if checkpoint_fecha.tz is None:
-        checkpoint_fecha = checkpoint_fecha.tz_localize('Europe/Madrid')
-
-    horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
+def mlAcumulados():
+    # checkpoint_ml = float(config.get("checkpoint_ml"))
+    ml_reduccion_diaria = float(config.get("reduction_rate"))
+    ml_iniciales_plan = float(config.get("plan_start_amount"))
+    checkpoint_fecha = pd.to_datetime(config.get("checkpoint_fecha"))
+    horas_desde_checkpoint = (ahora - checkpoint_fecha).total_seconds() / 3600
 
     def integral(t_h):
         if t_h < 0: return (ml_iniciales_plan / 24.0) * t_h
@@ -45,7 +37,7 @@ def ingresosTramo():
         t_eff = min(t_h, t_fin)
         return (ml_iniciales_plan / 24.0) * t_eff - (ml_reduccion_diaria / 1152.0) * (t_eff ** 2)
 
-    return integral(horas_desde_inicio) - integral((checkpoint_fecha - fecha_inicio_plan).total_seconds() / 3600)
+    return  float(config.get("checkpoint_ml") +integral(horas_desde_checkpoint))
 
 
 def calcular_resumen_bloques(df):
@@ -69,24 +61,24 @@ def crear_plan(df, config):
     database.save_plan_history_data(df_result)
     return df_result
 
-
-def obtener_plan(df):
-    # 1. Cargar parámetros del plan
-    df_hist = database.get_plan_history_data()
-
-    # Asegurar tipos numéricos
-    if 'Objetivo (ml)' in df_hist.columns:
-        df_hist['Objetivo (ml)'] = pd.to_numeric(df_hist['Objetivo (ml)'], errors='coerce').fillna(0)
-    if 'Reducción Plan' in df_hist.columns:
-        df_hist['Reducción Plan'] = pd.to_numeric(df_hist['Reducción Plan'], errors='coerce').fillna(0)
-
-    # Convertimos a diccionario para búsqueda rápida por fecha
-    history_cache = {}
-    for _, row in df_hist.iterrows():
-        history_cache[row['Fecha']] = row
-
-    df_result = create_tabla_reduccion(df,history_cache,config.get("plan_start_date"))
-    return df_result
+#
+# def obtener_plan(df):
+#     # 1. Cargar parámetros del plan
+#     df_hist = database.get_plan_history_data()
+#
+#     # Asegurar tipos numéricos
+#     if 'Objetivo (ml)' in df_hist.columns:
+#         df_hist['Objetivo (ml)'] = pd.to_numeric(df_hist['Objetivo (ml)'], errors='coerce').fillna(0)
+#     if 'Reducción Plan' in df_hist.columns:
+#         df_hist['Reducción Plan'] = pd.to_numeric(df_hist['Reducción Plan'], errors='coerce').fillna(0)
+#
+#     # Convertimos a diccionario para búsqueda rápida por fecha
+#     history_cache = {}
+#     for _, row in df_hist.iterrows():
+#         history_cache[row['Fecha']] = row
+#
+#     df_result = create_tabla_reduccion(df,history_cache,config.get("plan_start_date"))
+#     return df_result
 
 
 def create_tabla_reduccion(df,history_cache: dict[Any, Any],raw_start) -> DataFrame:
