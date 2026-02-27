@@ -3,8 +3,9 @@ import pandas as pd
 import database
 import time
 import logic
-from config import config
-from logic import ahora
+
+from state import invalidate_config
+
 
 class HistorialTab:
     def __init__(self, df):
@@ -68,8 +69,9 @@ class HistorialTab:
                     nuevo_checkpoint_ml = nuevo_saldo + gastos_totales
                     database.save_config({
                         "checkpoint_ml": nuevo_checkpoint_ml,
-                        "checkpoint_fecha": ahora.isoformat()
+                        "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat()
                     })
+                    invalidate_config()
                     st.cache_data.clear()
                     st.success(f"Saldo actualizado a {nuevo_saldo:.2f} ml")
                     time.sleep(1)
@@ -81,7 +83,7 @@ class HistorialTab:
         if not self.df.empty:
             c_f1, c_f2 = st.columns(2)
             fecha_inicio = c_f1.date_input("Fecha Inicio", self.df['timestamp'].min().date())
-            fecha_fin = c_f2.date_input("Fecha Fin", ahora.date())
+            fecha_fin = c_f2.date_input("Fecha Fin", pd.Timestamp.now(tz='Europe/Madrid').date())
 
             mask = (self.df['timestamp'].dt.date >= fecha_inicio) & (self.df['timestamp'].dt.date <= fecha_fin)
             df_filtrado = self.df.loc[mask]

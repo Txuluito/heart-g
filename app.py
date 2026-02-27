@@ -1,14 +1,20 @@
 import streamlit as st
 import database
-import logic
-import logging
-from config import config
 from tabs.tab_analisis import AnalisisTab
 from tabs.tab_historial import HistorialTab
 from tabs.tab_planificacion import PlanificacionTab
 from tabs.tab_toma import TomaTab
+import logging
+from state import load_config # <-- Importa la nueva función
 
-# Configuración
+# --- CONFIGURACIÓN DE LOGGING --- (si no la tienes ya)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
+
+# --- CARGA INICIAL DEL ESTADO ---
+load_config() # <-- Llama a la función aquí
+# ------------------------------
+
+
 st.set_page_config(page_title="Reductor GHB", layout="wide")
 st.title("📉 Reductor GHB")
 # try:
@@ -37,8 +43,3 @@ with t4:
     tab.render_metricas_logros()
     tab.render_zona_peligro()
     tab.render_filtros_visualizacion()
-# except Exception as e:
-#     print(f"Error no controlado: {e}")
-#     st.error(f"Error: {e}")
-#     st.cache_data.clear()
-#     st.rerun()

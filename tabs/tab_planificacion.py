@@ -1,14 +1,9 @@
-import pandas as pd
 import streamlit as st
-from duckdb.experimental.spark.sql.functions import hour
-
+import pandas as pd
 import database
 import logic
 import reduccion_plan
-from config import config
-from logic import ahora
-import time
-
+from state import invalidate_config
 class PlanificacionTab:
     def __init__(self, df):
         self.df = df
@@ -20,7 +15,7 @@ class PlanificacionTab:
             # Control para la cantidad inicial
             c1.number_input(
                 "Cantidad Inicial (ml/día)",
-                value=float(config.get("ml_iniciales_plan", 15.0)),
+                value=float(st.session_state.config.get("ml_iniciales_plan", 15.0)),
                 step=0.5,
                 key = "cantidad_inicial"
             )
@@ -28,7 +23,7 @@ class PlanificacionTab:
             # Control para la reducción diaria
             c2.number_input(
                 "Reducción Diaria (ml)",
-                value=float(config.get("reduccion_diaria", 1)),
+                value=float(st.session_state.config.get("reduccion_diaria", 1)),
                 step=0.05,
                 format="%.2f",
                 key = "reduccion_diaria"
@@ -38,38 +33,30 @@ class PlanificacionTab:
 
             c3.number_input(
                 "Dosis Defecto (ml)",
-                value= float(config.get("dosis_media", 3.2)),
+                value= float(st.session_state.config.get("dosis_media", 3.2)),
                 step=0.1,
                 key = "dosis_media"
             )
 
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
 
-            if c1.button("💾 GUARDAR CONFIGURACIÓN DEL PLAN"):
-                logic.mlAcumulados()
+            if c1.button("💾 ACTUALIZAR PLAN"):
                 reduccion_plan.replanificar(
                     st.session_state.get("dosis_media"),
                     st.session_state.get("reduccion_diaria"),
                     st.session_state.get("cantidad_inicial"),
                     logic.mlAcumulados())
                 st.success("Configuración del plan guardada.")
+                invalidate_config()
                 st.cache_data.clear()
                 st.rerun()
-            if config.get("fecha_inicio_plan") and c2.button("💾 REINICIAR PLAN / BALANCE A 0"):
-               database.save_config({
-                    "fecha_inicio_plan": ahora.isoformat(),
-                    "checkpoint_ml": 0.0,
-                    "checkpoint_fecha": ahora.isoformat()
-               })
-               st.cache_data.clear()
-               st.rerun()
-            if c3.button("💾 CREAR PLAN"):
+            if c2.button("💾 NUEVO PLAN"):
                 reduccion_plan.crear_nuevo_plan(
                     st.session_state.get("dosis_media"),
                     st.session_state.get("reduccion_diaria"),
-                    st.session_state.get("cantidad_inicial"),
-                    logic.mlAcumulados())
+                    st.session_state.get("cantidad_inicial"))
                 # logic.crear_plan(self.df,config)
+                invalidate_config()
                 st.cache_data.clear()
                 st.rerun()
 
@@ -79,11 +66,12 @@ class PlanificacionTab:
         self.render_tabla_plan()
 
     def render_tabla_plan(self):
-        if config.get("fecha_inicio_plan"):
+        if st.session_state.config.get("fecha_inicio_plan"):
             df_seg = reduccion_plan.obtener_datos_tabla()
+            df_seg['Fecha'] = df_seg['Fecha'].dt.strftime('%d/%m/%Y')
             st.dataframe(
                 df_seg.style.apply(
-                    lambda r: ['background-color: rgba(255, 75, 75, 0.1)'] * len(r) if r['Fecha'] == ahora.strftime(
+                    lambda r: ['background-color: rgba(255, 75, 75, 0.1)'] * len(r) if r['Fecha'] == pd.Timestamp.now(tz='Europe/Madrid').strftime(
                         '%d/%m/%Y') else [''] * len(r), axis=1
                 ).format({"Objetivo (ml)": "{:.2f}", "Real (ml)": "{:.2f}", "Reducción Plan": "{:.2f}"}),
                 width='stretch', hide_index=True

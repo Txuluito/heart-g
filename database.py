@@ -68,7 +68,9 @@ def get_config():
             try:
                 json_response = response.json()
                 if json_response.get('status') == 'success':
-                    return json_response.get('data', {})
+                    config =json_response.get('data', {})
+                    print(f"{config}")
+                    return config
             except ValueError:
                 print(f"Error decodificando config JSON de Sheets: {response.text[:200]}")
     except Exception as e:

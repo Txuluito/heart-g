@@ -1,44 +1,42 @@
+import streamlit as st
+
 import pandas as pd
 import numpy as np
-from pandas.io.formats.format import return_docstring
-from datetime import datetime
-
 import database
-from typing import Any
-from pandas import DataFrame
 
 
-from config import config
+
 
 # Usamos caché para no llamar a Google Sheets en cada interacción (TTL = 10 minutos)
 ahora = pd.Timestamp.now(tz='Europe/Madrid')
 
 def mlAcumulados():
-    if config.get("checkpoint_fecha") :
-        ml_reduccion_diaria = float(config.get("reduccion_diaria"))
-        ml_iniciales_plan = float(config.get("ml_iniciales_plan"))
+    if st.session_state.config.get("checkpoint_fecha"):
+        ml_reduccion_diaria = float(st.session_state.config.get("reduccion_diaria"))
+        checkpoint_ml = float(st.session_state.config.get("checkpoint_ml"))
+        checkpoint_fecha = pd.to_datetime(st.session_state.config.get("checkpoint_fecha"))
 
-
-        checkpoint_fecha = pd.to_datetime(config.get("checkpoint_fecha"))
-
-        if checkpoint_fecha.tzinfo is None or checkpoint_fecha.tzinfo.utcoffset(datetime.now()) is None:
+        if checkpoint_fecha.tzinfo is None or checkpoint_fecha.tzinfo.utcoffset(pd.Timestamp.now(tz='Europe/Madrid')) is None:
             checkpoint_fecha = checkpoint_fecha.tz_convert('Europe/Madrid')
 
-        horas_desde_checkpoint = (ahora - checkpoint_fecha).total_seconds() / 3600
-
+        horas_desde_checkpoint = (pd.Timestamp.now(tz='Europe/Madrid') - checkpoint_fecha).total_seconds() / 3600
         def integral(t_h):
-            if t_h < 0: return (ml_iniciales_plan / 24.0) * t_h
-            t_fin = (ml_iniciales_plan / ml_reduccion_diaria) * 24 if ml_reduccion_diaria > 0 else 999999
+            if t_h < 0: return (checkpoint_ml / 24.0) * t_h
+            t_fin = (checkpoint_ml / ml_reduccion_diaria) * 24 if ml_reduccion_diaria > 0 else 999999
             t_eff = min(t_h, t_fin)
-            return (ml_iniciales_plan / 24.0) * t_eff - (ml_reduccion_diaria / 1152.0) * (t_eff ** 2)
+            return (checkpoint_ml / 24.0) * t_eff - (ml_reduccion_diaria / 1152.0) * (t_eff ** 2)
 
-        return  float(config.get("checkpoint_ml") +integral(horas_desde_checkpoint))
+        integ= integral(horas_desde_checkpoint)
+
+        print(f"[mlAcumulados] -> checkpoint_ml: {checkpoint_ml},integral: {integ}, checkpoint_fecha: {checkpoint_fecha}, ml_reduccion_diaria: {ml_reduccion_diaria}")
+        return  float(checkpoint_ml + integ)
+
     else:
         return float(0)
 
 def calcular_resumen_bloques(df):
     df_b = df.copy()
-    df_b['horas_atras'] = (ahora - df_b['timestamp']).dt.total_seconds() / 3600
+    df_b['horas_atras'] = (pd.Timestamp.now(tz='Europe/Madrid') - df_b['timestamp']).dt.total_seconds() / 3600
     df_b['bloque_n'] = np.floor(df_b['horas_atras'] / 24).astype(int)
 
     resumen = df_b.groupby('bloque_n').agg(
@@ -68,9 +66,9 @@ def obtener_datos_tabla():
     # --- CORRECCIÓN APLICADA AQUÍ ---
     def calcular_estado(fecha_ts): # El argumento es un Timestamp de Pandas
         # Comparamos objetos del mismo tipo: date vs date
-        if fecha_ts.date() < ahora:
+        if fecha_ts.date() < pd.Timestamp.now(tz='Europe/Madrid'):
             return "Pasado"
-        elif fecha_ts.date() == ahora:
+        elif fecha_ts.date() == pd.Timestamp.now(tz='Europe/Madrid'):
             return "Hoy"
         else:
             return "Futuro"

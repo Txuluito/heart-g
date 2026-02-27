@@ -2,10 +2,11 @@ from datetime import datetime
 
 import streamlit as st
 import pandas as pd
+
 import logic
 import reduccion_plan
-from logic import ahora
-from config import config
+from state import invalidate_config
+
 import time
 
 class TomaTab:
@@ -23,8 +24,8 @@ class TomaTab:
                 help="...",
                 key="dosis_toma"  # <--- Agregamos esta clave
             )
-            c2.date_input("Fecha:", ahora.date(),key="fecha_toma")
-            c3.time_input("Hora:", ahora.time(),key="hora_toma")
+            c2.date_input("Fecha:", pd.Timestamp.now(tz='Europe/Madrid').date(),key="fecha_toma")
+            c3.time_input("Hora:", pd.Timestamp.now(tz='Europe/Madrid').time(),key="hora_toma")
 
             if st.button("🚀 ENVIAR REGISTRO", use_container_width=True):
                try:
@@ -34,6 +35,7 @@ class TomaTab:
                                                logic.mlAcumulados())
                    st.success("Registrado")
                    time.sleep(1)
+                   invalidate_config()
                    st.cache_data.clear()
                    st.rerun()
 
@@ -41,19 +43,20 @@ class TomaTab:
                    st.error(f"Error: {e}")
 
     def mostrar_metricas(self):
+        ahora =pd.Timestamp.now(tz='Europe/Madrid')
         ultima_toma = self.df['timestamp'].max() if not self.df.empty else ahora
         ml_dosis = st.session_state.get("dosis_toma")
 
         min_desde_ultima_toma = (ahora - ultima_toma).total_seconds() / 60
 
-        fecha_inicio_plan = pd.to_datetime(config.get("fecha_inicio_plan")) if config.get("fecha_inicio_plan") else ahora
+        fecha_inicio_plan = pd.to_datetime(st.session_state.config.get("fecha_inicio_plan")) if st.session_state.config.get("fecha_inicio_plan") else ahora
 
         if fecha_inicio_plan.tzinfo is None or fecha_inicio_plan.tzinfo.utcoffset(datetime.now()) is None:
             fecha_inicio_plan = fecha_inicio_plan.tz_localize('Europe/Madrid');
 
 
-        ml_reduccion_diaria = float(config.get("reduccion_diaria", 0.5))
-        ml_iniciales_plan = float(config.get("ml_iniciales_plan", 15.0))
+        ml_reduccion_diaria = float(st.session_state.config.get("reduccion_diaria", 0.5))
+        ml_iniciales_plan = float(st.session_state.config.get("ml_iniciales_plan", 15.0))
         horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
         dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
         objetivo_actual = max(0.0, ml_iniciales_plan - (ml_reduccion_diaria * dias_flotantes))
@@ -72,5 +75,4 @@ class TomaTab:
         else:
             m4.metric("Siguiente", "¡LISTO!", delta="Disponible")
 
-        mlAcumulados = logic.mlAcumulados()
-        m5.metric("Saldo", f"{mlAcumulados:.2f} ml", delta_color="normal" if mlAcumulados >= 0 else "inverse")
+        m5.metric("Saldo", f"{saldo:.2f} ml", delta_color="normal" if saldo >= 0 else "inverse")

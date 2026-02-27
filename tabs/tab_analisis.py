@@ -5,8 +5,7 @@ import numpy as np
 import logic
 import database
 from plotly.subplots import make_subplots
-from config import config
-from logic import ahora
+
 
 class AnalisisTab:
     def __init__(self, df_excel):
@@ -16,8 +15,8 @@ class AnalisisTab:
 
     def render_parametros_simulacion(self):
         with st.expander("🧪 AJUSTES FARMACOCINÉTICOS", expanded=False):
-            saved_hl = config.get("hl", 0.75)
-            saved_ka = config.get("ka", 3.0)
+            saved_hl = st.session_state.config.get("hl", 0.75)
+            saved_ka = st.session_state.config.get("ka", 3.0)
 
             c1, c2 = st.columns(2)
             hl = c1.slider("Vida media (h)", 0.5, 4.0, float(saved_hl), help="Tiempo en el que la sustancia se reduce a la mitad")
@@ -60,6 +59,7 @@ class AnalisisTab:
         except Exception as e:
             st.warning(f"Conecta Google Fit para ver el análisis cardíaco: {e}")
     def rellenar_datos_sin_frecuencia(self,df_fit, df_excel):
+        ahora=pd.Timestamp.now(tz='Europe/Madrid')
         # Determinar el punto de inicio
         if df_fit.empty:
             inicio = df_excel['timestamp'].min() if not df_excel.empty else ahora
