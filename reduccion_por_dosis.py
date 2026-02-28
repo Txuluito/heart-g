@@ -72,7 +72,6 @@ def crear_tabla(reduccion_diaria, ml_dia_actual, intervalo_horas):
         fecha_dia += timedelta(days=1)
         dias_count += 1
     return pd.DataFrame(tabla)
-
 def obtener_tabla():
     """
     (LEE DATOS de 'PlanHistory')
@@ -150,9 +149,7 @@ def add_toma(fecha_toma, ml_toma) -> DataFrame:
     else:
         print(f"ERROR: La fecha {fecha_toma_str} no se encontró en el plan.")
     return df_plan
-
-
-def replanificar(ml_dosis_actual, reduccion_diaria, ml_dia_actual,intervalo_horas):
+def replanificar(reduccion_diaria, ml_dia_actual, intervalo_horas):
     df_existente = obtener_tabla()
     fecha_actual_str = datetime.now().strftime("%Y-%m-%d")
 

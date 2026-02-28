@@ -28,8 +28,8 @@ def crear_nuevo_plan(ml_dia_actual, ml_dosis_actual, intervalo_horas,reduccion_d
     print(f"Nuevo plan por dosis guardado.")
 
 def replanificar(ml_dia_actual, ml_dosis_actual, intervalo_horas,reduccion_diaria):
-   reduccion_por_tiempo.replanificar(ml_dia_actual, reduccion_diaria, intervalo_horas)
-   reduccion_por_dosis.replanificar(ml_dosis_actual, reduccion_diaria, intervalo_horas)
+   reduccion_por_tiempo.replanificar(ml_dosis_actual, reduccion_diaria, ml_dia_actual)
+   reduccion_por_dosis.replanificar(reduccion_diaria, ml_dia_actual, intervalo_horas)
    save_config({
        "plan.checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
        "plan.reduccion_diaria": reduccion_diaria,
