@@ -2,8 +2,34 @@ import pandas as pd
 from datetime import datetime, timedelta
 # Importa las funciones que SÍ existen en tu database.py
 from database import get_plan_history_data, save_plan_history_data, get_config, save_config,enviar_toma_api
+import streamlit as st
 
-def crear_tabla_reduccion(dosis_media, reduccion_por_dia, objetivo_inicial):
+def mlAcumulados():
+    if st.session_state.config.get("checkpoint_fecha"):
+        # Lógica original para plan por tiempo (reducción continua)
+        ml_reduccion_diaria = float(st.session_state.config.get("reduccion_diaria", 0.5))
+        checkpoint_ml = float(st.session_state.config.get("checkpoint_ml"))
+        checkpoint_fecha = pd.to_datetime(st.session_state.config.get("checkpoint_fecha"))
+
+        if checkpoint_fecha.tzinfo is None or checkpoint_fecha.tzinfo.utcoffset(pd.Timestamp.now(tz='Europe/Madrid')) is None:
+            checkpoint_fecha = checkpoint_fecha.tz_convert('Europe/Madrid')
+
+        horas_desde_checkpoint = (pd.Timestamp.now(tz='Europe/Madrid') - checkpoint_fecha).total_seconds() / 3600
+        def integral(t_h):
+            if t_h < 0: return (checkpoint_ml / 24.0) * t_h
+            t_fin = (checkpoint_ml / ml_reduccion_diaria) * 24 if ml_reduccion_diaria > 0 else 999999
+            t_eff = min(t_h, t_fin)
+            return (checkpoint_ml / 24.0) * t_eff - (ml_reduccion_diaria / 1152.0) * (t_eff ** 2)
+
+        integ= integral(horas_desde_checkpoint)
+
+        print(f"[mlAcumulados] -> checkpoint_ml: {checkpoint_ml},integral: {integ}, checkpoint_fecha: {checkpoint_fecha}, ml_reduccion_diaria: {ml_reduccion_diaria}")
+        return  float(checkpoint_ml + integ)
+
+    else:
+        return float(0)
+
+def crear_tabla(dosis_media, reduccion_por_dia, objetivo_inicial):
     """
     (LÓGICA PURA)
     Crea una tabla de reducción como un DataFrame de pandas. No interactúa con la base de datos.
@@ -39,7 +65,7 @@ def obtener_datos_tabla():
     (LEE DATOS de 'PlanHistory')
     Obtiene los datos del plan, los convierte a tipos correctos y calcula el estado.
     """
-    df = get_plan_history_data() # <- CORREGIDO
+    df = get_plan_history_data(sheet_name="PlanHistory") # <- CORREGIDO
     if df.empty:
         return pd.DataFrame()
 
@@ -76,15 +102,16 @@ def crear_nuevo_plan(dosis_media, reduccion_diaria, cantidad_inicial):
     (ESCRIBE DATOS en 'PlanHistory')
     Limpia la hoja y guarda la nueva configuración del plan.
     """
-    df_nuevo = crear_tabla_reduccion(dosis_media, reduccion_diaria, cantidad_inicial)
-    save_plan_history_data(df_nuevo) # <- CORREGIDO
+    df_nuevo = crear_tabla(dosis_media, reduccion_diaria, cantidad_inicial)
+    save_plan_history_data(df_nuevo, sheet_name="PlanHistory") # <- CORREGIDO
     save_config({
         "fecha_inicio_plan": pd.Timestamp.now(tz='Europe/Madrid').isoformat() ,  # Guardamos la nueva fecha
         "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat() ,  # Guardamos la nueva fecha
         "ml_iniciales_plan":cantidad_inicial,
         "checkpoint_ml":  0.0,
         "reduccion_diaria": reduccion_diaria,
-        "dosis_media": dosis_media
+        "dosis_media": dosis_media,
+        "tipo_plan": "tiempo"
     })
 
     print(f"Nuevo plan guardado en la hoja 'PlanHistory'.")
@@ -99,17 +126,18 @@ def replanificar(dosis_media, reduccion_diaria, cantidad_inicial, mlBote):
     fecha_actual_str = datetime.now().strftime("%Y-%m-%d")
     
     df_conservada = df_existente[df_existente["Fecha"] < fecha_actual_str]
-    df_nuevo = crear_tabla_reduccion(dosis_media, reduccion_diaria, cantidad_inicial)
+    df_nuevo = crear_tabla(dosis_media, reduccion_diaria, cantidad_inicial)
     
     df_final = pd.concat([df_conservada, df_nuevo], ignore_index=True)
 
-    save_plan_history_data(df_final) # <- CORREGIDO
+    save_plan_history_data(df_final, sheet_name="PlanHistory") # <- CORREGIDO
     save_config({
         "ml_iniciales_plan": cantidad_inicial,
         "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat() ,  # Guardamos la nueva fecha
         "checkpoint_ml": mlBote,
         "reduccion_diaria": reduccion_diaria,
-        "dosis_media": dosis_media
+        "dosis_media": dosis_media,
+        "tipo_plan": "tiempo"
     })
 
     print(f"Plan replanificado en la hoja 'PlanHistory'.")
@@ -128,16 +156,12 @@ def guardar_toma(fecha_toma, hora_toma, ml_toma,ml_bote):
     fecha_hora_toma = pd.Timestamp(fecha_hora_toma).tz_localize('Europe/Madrid')
     df_plan = obtener_datos_tabla()
     df_plan["Fecha"]=df_plan["Fecha"].dt.strftime('%Y-%m-%d')
-    print(f"[guardar_toma] Argumentos -> df_plan['Fecha']: {df_plan["Fecha"]}")
     fecha_toma = pd.Timestamp(fecha_toma).tz_localize('Europe/Madrid')
     if fecha_toma.strftime('%Y-%m-%d') not in df_plan["Fecha"].values:
         print(f"ERROR: La fecha {fecha_toma} no se encontró en el plan.")
     else:
-        # print(f"[guardar_toma] Argumentos -> fecha: {df_plan['Fecha'].dt.date()}, (Tipo: {type(df_plan['Fecha'].dt.date())})")
-        print(f"[guardar_toma] Argumentos -> fecha: {df_plan})")
         df_plan.loc[df_plan['Fecha'] == fecha_toma.strftime('%Y-%m-%d'), 'Real (ml)'] += ml_toma
-        print(f"[guardar_toma] Argumentos -> fecha: {df_plan})")
-        save_plan_history_data(df_plan)  # <- CORREGIDO
+        save_plan_history_data(df_plan, sheet_name="PlanHistory")  # <- CORREGIDO
         # 3. Actualizar los valores del checkpoint EN la configuración existente
 
         save_config({"checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat() ,
@@ -159,7 +183,7 @@ def borrar_toma(fecha_toma, cantidad):
         return df_plan
             
     df_plan.loc[df_plan["Fecha"] == fecha_toma, "Real (ml)"] -= cantidad
-    save_plan_history_data(df_plan) # <- CORREGIDO
+    save_plan_history_data(df_plan, sheet_name="PlanHistory") # <- CORREGIDO
     df_plan.loc[df_plan["Fecha"] == fecha_toma, "Real (ml)"] -= cantidad
     print(f"Toma de {cantidad}ml borrada para el día {fecha_toma}.")
     print("ADVERTENCIA: La lógica del checkpoint no se revierte automáticamente al borrar.")

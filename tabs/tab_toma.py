@@ -4,7 +4,8 @@ import streamlit as st
 import pandas as pd
 
 import logic
-import reduccion_plan
+import reduccion_por_tiempo
+import reduccion_por_dosis
 from state import invalidate_config
 
 import time
@@ -12,6 +13,9 @@ import time
 class TomaTab:
     def __init__(self, df):
         self.df = df
+        if 'config' not in st.session_state:
+            st.session_state.config = database.get_config()
+        self.config = st.session_state.config
 
     def mostrar_registro(self):
         with st.expander("➕ REGISTRAR TOMA", expanded=False):
@@ -24,15 +28,24 @@ class TomaTab:
                 help="...",
                 key="dosis_toma"  # <--- Agregamos esta clave
             )
-            c2.date_input("Fecha:", pd.Timestamp.now(tz='Europe/Madrid').date(),key="fecha_toma")
-            c3.time_input("Hora:", pd.Timestamp.now(tz='Europe/Madrid').time(),key="hora_toma")
+            c2.date_input("Fecha:", pd.Timestamp.now(tz='Europe/Madrid').date(), key="fecha_toma_input")
+            c3.time_input("Hora:", pd.Timestamp.now(tz='Europe/Madrid').time(), key="hora_toma_input")
 
             if st.button("🚀 ENVIAR REGISTRO", use_container_width=True):
                try:
-                   reduccion_plan.guardar_toma(st.session_state.get("fecha_toma"),
-                                               st.session_state.get("hora_toma"),
-                                               st.session_state.get("dosis_toma"),
-                                               logic.mlAcumulados())
+                   tipo_plan = st.session_state.config.get("tipo_plan", "tiempo")
+
+                   if tipo_plan == "dosis":
+                       reduccion_por_dosis.guardar_toma(st.session_state.get("fecha_toma_input"),
+                                                   st.session_state.get("hora_toma_input"),
+                                                   st.session_state.get("dosis_toma"),
+                                                   reduccion_por_dosis.mlAcumulados())
+                   else:
+                       reduccion_por_tiempo.guardar_toma(st.session_state.get("fecha_toma_input"),
+                                                   st.session_state.get("hora_toma_input"),
+                                                   st.session_state.get("dosis_toma"),
+                                                   reduccion_por_tiempo.mlAcumulados())
+
                    st.success("Registrado")
                    time.sleep(1)
                    invalidate_config()
@@ -43,30 +56,35 @@ class TomaTab:
                    st.error(f"Error: {e}")
 
     def mostrar_metricas(self):
-        ahora =pd.Timestamp.now(tz='Europe/Madrid')
+        ahora = pd.Timestamp.now(tz='Europe/Madrid')
         ultima_toma = self.df['timestamp'].max() if not self.df.empty else ahora
-        ml_dosis = st.session_state.get("dosis_toma")
+        ml_dosis = st.session_state.get("dosis_toma", 3.0) # Default to 3.0 if key not present
 
         min_desde_ultima_toma = (ahora - ultima_toma).total_seconds() / 60
 
-        fecha_inicio_plan = pd.to_datetime(st.session_state.config.get("fecha_inicio_plan")) if st.session_state.config.get("fecha_inicio_plan") else ahora
+        fecha_inicio_plan = pd.to_datetime(self.config.get("fecha_inicio_plan")) if self.config.get("fecha_inicio_plan") else ahora
 
         if fecha_inicio_plan.tzinfo is None or fecha_inicio_plan.tzinfo.utcoffset(datetime.now()) is None:
-            fecha_inicio_plan = fecha_inicio_plan.tz_localize('Europe/Madrid');
+            fecha_inicio_plan = fecha_inicio_plan.tz_localize('Europe/Madrid')
 
 
-        ml_reduccion_diaria = float(st.session_state.config.get("reduccion_diaria", 0.5))
-        ml_iniciales_plan = float(st.session_state.config.get("ml_iniciales_plan", 15.0))
+        ml_reduccion_diaria = float(self.config.get("reduccion_diaria", 0.5))
+        ml_iniciales_plan = float(self.config.get("ml_iniciales_plan", 15.0))
         horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
         dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
         objetivo_actual = max(0.0, ml_iniciales_plan - (ml_reduccion_diaria * dias_flotantes))
         tasa_gen= objetivo_actual / 24.0
-        saldo = logic.mlAcumulados()
+        tipo_plan = st.session_state.config.get("tipo_plan", "tiempo")
+        if tipo_plan == "dosis":
+            saldo = reduccion_por_dosis.mlAcumulados()
+        else:
+            saldo = reduccion_por_tiempo.mlAcumulados()
+
         mins_espera = ((ml_dosis - saldo) / tasa_gen * 60) if saldo < ml_dosis and tasa_gen > 0 else 0
         intervalo_teorico = int((ml_dosis / tasa_gen) * 60) if tasa_gen > 0 else 0
 
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Dosis", f"{st.session_state.get('dosis_toma'):.2f} ml")
+        m1.metric("Dosis", f"{ml_dosis:.2f} ml")
         m2.metric("Última hace", f"{int(min_desde_ultima_toma // 60)}h {int(min_desde_ultima_toma % 60)}m")
         m3.metric("Intervalo", f"{intervalo_teorico // 60}h {intervalo_teorico % 60}m")
 

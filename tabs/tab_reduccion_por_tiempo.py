@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import database
 import logic
-import reduccion_plan
+import reduccion_por_tiempo
 from state import invalidate_config
-class PlanificacionTab:
+class PlanificacionTiempoTab:
     def __init__(self, df):
         self.df = df
 
@@ -41,17 +41,17 @@ class PlanificacionTab:
             c1, c2 = st.columns(2)
 
             if c1.button("💾 ACTUALIZAR PLAN"):
-                reduccion_plan.replanificar(
+                reduccion_por_tiempo.replanificar(
                     st.session_state.get("dosis_media"),
                     st.session_state.get("reduccion_diaria"),
                     st.session_state.get("cantidad_inicial"),
-                    logic.mlAcumulados())
+                    reduccion_por_tiempo.mlAcumulados())
                 st.success("Configuración del plan guardada.")
                 invalidate_config()
                 st.cache_data.clear()
                 st.rerun()
             if c2.button("💾 NUEVO PLAN"):
-                reduccion_plan.crear_nuevo_plan(
+                reduccion_por_tiempo.crear_nuevo_plan(
                     st.session_state.get("dosis_media"),
                     st.session_state.get("reduccion_diaria"),
                     st.session_state.get("cantidad_inicial"))
@@ -61,13 +61,12 @@ class PlanificacionTab:
                 st.rerun()
 
     def render(self):
-        st.header("📅 Planificación de Reducción")
         self.render_configurar_plan()
         self.render_tabla_plan()
 
     def render_tabla_plan(self):
         if st.session_state.config.get("fecha_inicio_plan"):
-            df_seg = reduccion_plan.obtener_datos_tabla()
+            df_seg = reduccion_por_tiempo.obtener_datos_tabla()
             df_seg['Fecha'] = df_seg['Fecha'].dt.strftime('%d/%m/%Y')
             st.dataframe(
                 df_seg.style.apply(
