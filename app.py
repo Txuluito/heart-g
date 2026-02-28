@@ -20,19 +20,19 @@ st.set_page_config(page_title="Reductor GHB", layout="wide")
 st.title("📉 Reductor GHB")
 # try:
 excel_data = database.get_excel_data()
-t1, t2, t3, t4, t5 = st.tabs(["📉 Tomas", "📅 Planificación Tiempo", "🗓 Planificación Fija", "📊 Análisis", "📜 Historial"])
+t1, t2, t3, t4, t5 = st.tabs(["📉 Tomas", "⏱️ Reducción por Tiempos", "💊 Reducción por Dosis", "🧬 Bio-Análisis", "📜 Historial"])
 with t1:
     tab = TomaTab(excel_data)
-    st.header("📉 Tomas")
+    st.header("📉 Panel de Tomas")
     tab.mostrar_registro()
     tab.mostrar_metricas()
     st.markdown("---")
 with t2:
-    st.header("📅 Reducción por Tiempo")
+    st.header("⏱️ Planificación: Reducción por Tiempo")
     tab = PlanificacionTiempoTab(excel_data)
     tab.render()
 with t3:
-    st.header("🗓 Reducción por Dosis")
+    st.header("💊 Planificación: Reducción por Dosis")
     tab = PlanificacionDosisTab(excel_data)
     tab.render()
 with t4:

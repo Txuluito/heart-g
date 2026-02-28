@@ -33,16 +33,16 @@ class PlanificacionTiempoTab:
 
             c3.number_input(
                 "Dosis Defecto (ml)",
-                value= float(st.session_state.config.get("dosis_media", 3.2)),
+                value= float(st.session_state.config.get("tiempos.dosis_media", 3.2)),
                 step=0.1,
-                key = "dosis_media"
+                key = "tiempos.dosis_media"
             )
 
             c1, c2 = st.columns(2)
 
             if c1.button("💾 ACTUALIZAR PLAN"):
                 reduccion_por_tiempo.replanificar(
-                    st.session_state.get("dosis_media"),
+                    st.session_state.get("tiempos.dosis_media"),
                     st.session_state.get("reduccion_diaria"),
                     st.session_state.get("cantidad_inicial"),
                     reduccion_por_tiempo.mlAcumulados())
@@ -52,7 +52,7 @@ class PlanificacionTiempoTab:
                 st.rerun()
             if c2.button("💾 NUEVO PLAN"):
                 reduccion_por_tiempo.crear_nuevo_plan(
-                    st.session_state.get("dosis_media"),
+                    st.session_state.get("tiempos.dosis_media"),
                     st.session_state.get("reduccion_diaria"),
                     st.session_state.get("cantidad_inicial"))
                 # logic.crear_plan(self.df,config)

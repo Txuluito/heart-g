@@ -110,7 +110,7 @@ def crear_nuevo_plan(dosis_media, reduccion_diaria, cantidad_inicial):
         "ml_iniciales_plan":cantidad_inicial,
         "checkpoint_ml":  0.0,
         "reduccion_diaria": reduccion_diaria,
-        "dosis_media": dosis_media,
+        "tiempos.dosis_media": dosis_media,
         "tipo_plan": "tiempo"
     })
 
@@ -136,7 +136,7 @@ def replanificar(dosis_media, reduccion_diaria, cantidad_inicial, mlBote):
         "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat() ,  # Guardamos la nueva fecha
         "checkpoint_ml": mlBote,
         "reduccion_diaria": reduccion_diaria,
-        "dosis_media": dosis_media,
+        "tiempos.dosis_media": dosis_media,
         "tipo_plan": "tiempo"
     })
 

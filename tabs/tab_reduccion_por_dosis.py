@@ -32,16 +32,16 @@ class PlanificacionDosisTab:
             new_date = c1.date_input("Fecha Inicio", value=val_date, key="fijo_date")
 
             # Intervalo (en horas)
-            current_interval = float(self.config.get("plan_fijo_intervalo_horas", 2.0))
+            current_interval = float(self.config.get("dosis.intervalo_horas", 2.0))
             new_interval = c2.number_input("Intervalo (horas)", min_value=0.5, max_value=24.0, value=current_interval, step=0.25, key="fijo_interval")
 
             # Dosis Inicial
-            current_dosis = float(self.config.get("plan_fijo_dosis_inicial", 3.0))
+            current_dosis = float(self.config.get("dosis.dosis_inicial", 3.0))
             new_dosis = c3.number_input("Dosis Inicial (ml)", min_value=0.1, max_value=20.0, value=current_dosis, step=0.1, key="fijo_dosis")
 
             # Reducción de dosis diaria
-            current_red = float(self.config.get("plan_fijo_reduccion_dosis", 0.05))
-            new_red = c4.number_input("Reducción Dosis/Día (ml)", min_value=0.0, max_value=5.0, value=current_red, step=0.005, format="%.3f", key="fijo_red")
+            current_red = float(self.config.get("dosis.reduccion_dosis", 0.05))
+            new_red = c4.number_input("Reducción Dosis/Día (ml)", min_value=0.0, max_value=5.0, value=current_red, step=0.05, format="%.2f", key="fijo_red")
 
             if st.button("💾 GUARDAR PLAN FIJO"):
                 reduccion_por_dosis.crear_nuevo_plan(

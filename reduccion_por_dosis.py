@@ -6,8 +6,8 @@ from database import get_plan_history_data, save_plan_history_data, get_config, 
 
 def mlAcumulados():
     if st.session_state.config.get("checkpoint_fecha"):
-        dosis_actual = float(st.session_state.config.get("plan_fijo_dosis_inicial", 3.0))
-        intervalo = float(st.session_state.config.get("plan_fijo_intervalo_horas", 2.0))
+        dosis_actual = float(st.session_state.config.get("dosis.dosis_inicial", 3.0))
+        intervalo = float(st.session_state.config.get("dosis.intervalo_horas", 2.0))
 
         # Tasa de generación (ml/hora) = Dosis / Intervalo
         tasa_generacion = dosis_actual / intervalo if intervalo > 0 else 0
@@ -124,9 +124,9 @@ def crear_nuevo_plan(dosis_inicial, reduccion_dosis, intervalo_horas):
         "fecha_inicio_plan": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
         "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
         "tipo_plan": "dosis", # Marca el tipo de plan activo
-        "plan_fijo_dosis_inicial": dosis_inicial,
-        "plan_fijo_reduccion_dosis": reduccion_dosis,
-        "plan_fijo_intervalo_horas": intervalo_horas,
+        "dosis.dosis_inicial": dosis_inicial,
+        "dosis.reduccion_dosis": reduccion_dosis,
+        "dosis.intervalo_horas": intervalo_horas,
         "checkpoint_ml": 0.0
     })
 
@@ -162,9 +162,9 @@ def replanificar(dosis_inicial, reduccion_dosis, intervalo_horas, ml_acumulados)
     save_plan_history_data(df_final, sheet_name="PlanHistoryDosis")
 
     save_config({
-        "plan_fijo_dosis_inicial": dosis_inicial,
-        "plan_fijo_reduccion_dosis": reduccion_dosis,
-        "plan_fijo_intervalo_horas": intervalo_horas,
+        "dosis.dosis_inicial": dosis_inicial,
+        "dosis.reduccion_dosis": reduccion_dosis,
+        "dosis.intervalo_horas": intervalo_horas,
         "checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
         "checkpoint_ml": ml_acumulados,
         "tipo_plan": "dosis"
