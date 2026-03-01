@@ -17,24 +17,13 @@ class ReduccionTab:
         c1.number_input("Consumo diario actual (ml/día)", value=float(st.session_state.config.get("plan.ml_dia", 15.0)),
                         step=0.5, key="ml_dia_actual")
 
-        # Conversión segura del valor de intervalo a time
-        intervalo_val = st.session_state.config.get("dosis.intervalo_horas", "02:00")
-        intervalo_time = datetime.strptime("02:00", "%H:%M").time() # Valor por defecto seguro
-
-        try:
-            if isinstance(intervalo_val, str):
-                intervalo_time = datetime.strptime(intervalo_val, "%H:%M").time()
-            elif isinstance(intervalo_val, (int, float)):
-                # Convertir float de horas (ej: 2.5) a time (02:30)
-                h = int(intervalo_val)
-                m = int((intervalo_val - h) * 60)
-                intervalo_time = datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M").time()
-        except Exception:
-            pass # Mantiene el default seguro
+        # 2. Convertir a datetime.time para Streamlit
+        # Sumamos el intervalo a una fecha base (00:00:00) y extraemos la hora (.time())
+        intervalo_time = (pd.to_datetime(0) + pd.to_timedelta(st.session_state.config.get("consumo.intervalo_minutos", 120), unit='m')).time()
 
         c2.time_input("Intervalo en horas actual (horas)", value=intervalo_time, key="intervalo_dia_actual")
 
-        c3.number_input("Dosis por toma actual (ml)", value=float(st.session_state.config.get("tiempos.ml_dosis", 3.2)), step=0.1,
+        c3.number_input("Dosis por toma actual (ml)", value=float(st.session_state.config.get("consumo.ml_dosis", 3.2)), step=0.1,
                         key="ml_dosis_actual")
         c4.number_input("Reducción Diaria deseada (ml)",
                         value=float(st.session_state.config.get("plan.reduccion_diaria", 1)), step=0.05,

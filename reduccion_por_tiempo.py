@@ -64,9 +64,6 @@ def obtener_tabla():
     if df.empty:
         return pd.DataFrame()
 
-    for col in ['Objetivo (ml)', 'Real (ml)', 'Reducción Diaria', 'Dosis']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
     # Manejo robusto de fechas
     df['Fecha'] = pd.to_datetime(df['Fecha'])
 
@@ -78,16 +75,15 @@ def obtener_tabla():
          # Asumimos que vienen en UTC o sin zona, las tratamos como UTC y luego Madrid
          df['Fecha'] = df['Fecha'].dt.tz_localize('UTC').dt.tz_convert('Europe/Madrid')
 
-    # fecha_actual_str = datetime.now().strftime("%Y-%m-%d")
-    hoy = datetime.now().date() # Obtener la fecha de HOY (objeto date) una sola vez
+
     def calcular_estado(row):
-        if row["Fecha"].date() < hoy:
+        if row["Fecha"] < datetime.now().strftime("%Y-%m-%d"):
             # Ciclo cerrado (días anteriores)
             if row['Real (ml)'] <= row['Objetivo (ml)'] + 0.5:
                 return "✅ Sí"
             else:
                 return "❌ No"
-        elif row["Fecha"].date() == hoy:
+        elif row["Fecha"] == datetime.now().strftime("%Y-%m-%d"):
             # Ciclo en curso (hoy)
             return "⏳ En curso"
         else:
@@ -95,52 +91,31 @@ def obtener_tabla():
             return "🔮 Futuro"
 
 
+    df["Fecha"] = df["Fecha"].dt.strftime('%Y-%m-%d')
+    df["Objetivo (ml)"] = pd.to_numeric(df['Objetivo (ml)'], errors='coerce').fillna(0)
+    df["Reducción Diaria"] = pd.to_numeric(df['Reducción Diaria'], errors='coerce').fillna(0)
+    df['Dosis'] = pd.to_numeric(df['Dosis'], errors='coerce').fillna(0)
+    # df['Intervalo'] = df["Fecha"].dt.strftime('%Y-%m-%d')
+    df['Real (ml)'] = pd.to_numeric( df['Real (ml)'], errors='coerce').fillna(0)
     df['Estado'] = df.apply(calcular_estado, axis=1)
-    df['Dosis'] = df['Dosis'].map('{:.2f}'.format)
+
     return df
 def replanificar(dosis_media, reduccion_diaria, ml_dia_actual):
-    df_existente = obtener_tabla()
-    fecha_actual_str = datetime.now().strftime("%Y-%m-%d")
-    
-    df_conservada = df_existente[df_existente["Fecha"] < fecha_actual_str]
+    fecha_hoy = pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')
     df_nuevo = crear_tabla(dosis_media, reduccion_diaria, ml_dia_actual)
-    
-    df_final = pd.concat([df_conservada, df_nuevo], ignore_index=True)
+    df_plan = st.session_state.df_tiempos.copy()
 
-    save_plan_history_data(df_final, sheet_name="Plan Tiempo") # <- CORREGIDO
+    fila_hoy_antigua = df_plan[df_plan["Fecha"] == fecha_hoy]
+    if not fila_hoy_antigua.empty:
+        df_nuevo.loc[df_nuevo['Fecha'] == fecha_hoy, 'Real (ml)']= fila_hoy_antigua['Real (ml)']
+    df_plan = df_plan[df_plan["Fecha"] < fecha_hoy]
+    df_final = pd.concat([df_plan, df_nuevo], ignore_index=True)
+    save_plan_history_data(df_final, sheet_name="Plan Tiempo")
     print(f"Plan replanificado en la hoja 'PlanHistory'.")
-    return df_final
+
 def add_toma(fecha_toma, ml_toma) -> DataFrame:
-    ml_bote=mlAcumulados()
-    nuevo_checkpoint_ml = ml_bote - ml_toma
-    # Actualizar tabla local
-    df_plan = obtener_tabla()
-
-    # Usar string formateado para comparar fechas sin problemas de hora/zona
-    # Asumimos que fecha_toma viene como objeto date o datetime
-    if isinstance(fecha_toma, datetime):
-        fecha_toma_str = fecha_toma.strftime('%Y-%m-%d')
-    else:
-        fecha_toma_str = str(fecha_toma)
-
-    # Crear columna temporal de string para matching
-    df_plan["Fecha_Str"] = df_plan["Fecha"].dt.strftime('%Y-%m-%d')
-
-    if fecha_toma_str in df_plan["Fecha_Str"].values:
-        idx = df_plan[df_plan['Fecha_Str'] == fecha_toma_str].index
-        df_plan.loc[idx, 'Real (ml)'] += ml_toma
-
-        # Guardar sin columnas auxiliares ni Estado
-        cols_to_drop = ['Fecha_Str', 'Estado']
-        df_to_save = df_plan.drop(columns=[c for c in cols_to_drop if c in df_plan.columns])
-
-        save_plan_history_data(df_to_save, sheet_name="Plan Dosis")
-
-        save_config({
-            "plan.checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
-            "checkpoint_ml": nuevo_checkpoint_ml
-        })
-        print(f"Toma guardada. Checkpoint actualizado.")
-    else:
-        print(f"ERROR: La fecha {fecha_toma_str} no se encontró en el plan.")
-    return df_plan
+    df = st.session_state.df_tiempos.copy()
+    row = df[df["Fecha"] == fecha_toma.strftime('%Y-%m-%d')]
+    if not row.empty:
+        df.loc[df["Fecha"] == fecha_toma.strftime('%Y-%m-%d'), 'Real (ml)']+=ml_toma
+    save_plan_history_data(df, sheet_name="Plan Tiempo")
