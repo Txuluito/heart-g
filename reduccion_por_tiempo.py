@@ -125,47 +125,47 @@ def dosis_actual():
     if not row.empty:
         return float(row['Dosis'].iloc[0])
     else:
-        return 3.5
-def intervalo():
-    df = st.session_state.df_tiempos.copy()
-    ahora = pd.Timestamp.now(tz='Europe/Madrid')
-    fecha_inicio_plan = pd.to_datetime(st.session_state.config.get("plan.fecha_inicio_plan")) if st.session_state.config.get(
-        "plan.fecha_inicio_plan") else ahora
-
-    if fecha_inicio_plan.tzinfo is None:
-        fecha_inicio_plan = fecha_inicio_plan.tz_localize('UTC').tz_convert('Europe/Madrid')
-    else:
-        fecha_inicio_plan = fecha_inicio_plan.tz_convert('Europe/Madrid')
-
-    ml_reduccion_diaria = float(st.session_state.config.get("plan.reduccion_diaria", 0.5))
-    ml_dia = float(st.session_state.config.get("plan.ml_dia", 15.0))
-
-    horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
-    dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
-    objetivo_actual = max(0.0, ml_dia - (ml_reduccion_diaria * dias_flotantes))
-    tasa_gen = objetivo_actual / 24.0
-    if tasa_gen > 0:
-        return  int((dosis_actual() / tasa_gen) * 60)
-    else:
         return 0
 
-def minEspera(ml_dosis,saldo):
+def calcular_metricas_tiempo(df_tomas):
     ahora = pd.Timestamp.now(tz='Europe/Madrid')
-    fecha_inicio_plan = pd.to_datetime(
-        st.session_state.config.get("plan.fecha_inicio_plan")) if st.session_state.config.get(
-        "plan.fecha_inicio_plan") else ahora
+
+    # --- Lógica de Cálculo Dinámico ---
+    
+    # 1. Cargar parámetros del plan
+    fecha_inicio_plan = pd.to_datetime(st.session_state.config.get("plan.fecha_inicio_plan", ahora))
     if fecha_inicio_plan.tzinfo is None:
         fecha_inicio_plan = fecha_inicio_plan.tz_localize('UTC').tz_convert('Europe/Madrid')
-    else:
-        fecha_inicio_plan = fecha_inicio_plan.tz_convert('Europe/Madrid')
+    
+    ml_dia_inicial = float(st.session_state.config.get("consumo.ml_dia", 15.0))
+    reduccion_diaria = float(st.session_state.config.get("plan.reduccion_diaria", 0.5))
 
-    ml_reduccion_diaria = float(st.session_state.config.get("plan.reduccion_diaria", 0.5))
-    ml_dia = float(st.session_state.config.get("plan.ml_dia", 15.0))
+    # 2. Calcular el objetivo de consumo diario en este preciso instante
+    dias_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / (3600 * 24)
+    objetivo_actual_ml_dia = max(0, ml_dia_inicial - (reduccion_diaria * dias_desde_inicio))
+    
+    # 3. Calcular la tasa de generación de ml por minuto actual
+    tasa_gen_actual_ml_por_minuto = objetivo_actual_ml_dia / 1440.0
 
-    horas_desde_inicio = (ahora - fecha_inicio_plan).total_seconds() / 3600
-    dias_flotantes = max(0.0, horas_desde_inicio / 24.0)
-    objetivo_actual = max(0.0, ml_dia - (ml_reduccion_diaria * dias_flotantes))
-    tasa_gen = objetivo_actual / 24.0
-    if tasa_gen > 0 and saldo < ml_dosis:
-        return ((ml_dosis - saldo) / tasa_gen * 60)
-    return 0
+    # 4. Obtener la dosis del plan para hoy
+    dosis_plan_hoy = dosis_actual()
+
+    # 5. Calcular el intervalo teórico basado en la tasa actual
+    intervalo_teorico = 0
+    if tasa_gen_actual_ml_por_minuto > 0 and dosis_plan_hoy > 0:
+        intervalo_teorico = dosis_plan_hoy / tasa_gen_actual_ml_por_minuto
+    
+    # 6. Calcular tiempo desde la última toma
+    ultima_toma_ts = df_tomas['timestamp'].max() if not df_tomas.empty else ahora
+    min_desde_ultima_toma = (ahora - ultima_toma_ts).total_seconds() / 60
+
+    # 7. Calcular minutos de espera restantes (basado en intervalo)
+    mins_espera = max(0, intervalo_teorico - min_desde_ultima_toma)
+
+    # 8. Calcular minutos de espera restantes (basado en SALDO)
+    saldo_actual = mlAcumulados()
+    mins_espera_saldo = 0
+    if tasa_gen_actual_ml_por_minuto > 0 and saldo_actual < dosis_plan_hoy:
+        mins_espera_saldo = (dosis_plan_hoy - saldo_actual) / tasa_gen_actual_ml_por_minuto
+
+    return dosis_plan_hoy, intervalo_teorico, mins_espera, mins_espera_saldo

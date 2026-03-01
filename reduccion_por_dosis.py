@@ -12,7 +12,11 @@ def mlAcumulados():
         # Usar claves consistentes con reduccion.py, con fallback a las antiguas
         dosis_actual = float(st.session_state.config.get("consumo.ml_dosis", 3.0))
 
-        intervalo = st.session_state.config.get("consumo.intervalo_minutos") / 60
+        intervalo_minutos = st.session_state.config.get("consumo.intervalo_minutos", 120)
+        if intervalo_minutos is None:
+            intervalo_minutos = 120
+        
+        intervalo = float(intervalo_minutos) / 60.0
 
         # Tasa de generación (ml/hora) = Dosis / Intervalo
         tasa_generacion = dosis_actual / intervalo if intervalo > 0 else 0
@@ -131,7 +135,7 @@ def dosis_actual():
     if not row.empty:
         return float(row['Dosis'].iloc[0])
     else:
-        return 3.5
+        return 0
 def intervalo():
     df = st.session_state.df_dosis.copy()
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
@@ -143,13 +147,29 @@ def intervalo():
             return int(parts[0]) * 60 + int(parts[1])
     return 120 # Default to 120 minutes
 
-def minEspera(ml_dosis,saldo):
-    dosis_target = float(st.session_state.config.get("consumo.ml_dosis", 3.0))
-    intervalo_horas = st.session_state.config.get("consumo.intervalo_minutos", 120)/ 60.0
+def calcular_metricas_dosis(df_tomas):
+    ahora = pd.Timestamp.now(tz='Europe/Madrid')
+    
+    # 1. Obtener dosis y objetivo del plan para hoy
+    dosis_plan_hoy = dosis_actual()
+    intervalo_teorico = intervalo()
+    
+    # 2. Calcular tiempo desde la última toma
+    ultima_toma_ts = df_tomas['timestamp'].max() if not df_tomas.empty else ahora
+    min_desde_ultima_toma = (ahora - ultima_toma_ts).total_seconds() / 60
 
-    tasa_gen = dosis_target / intervalo_horas if intervalo_horas > 0 else 0
+    # 3. Calcular minutos de espera (basado en intervalo)
+    mins_espera = max(0, intervalo_teorico - min_desde_ultima_toma)
 
-    # Recalcular métricas finales
-    if tasa_gen > 0 and saldo < ml_dosis:
-        return ((ml_dosis - saldo) / tasa_gen * 60)
-    return 0
+    # 4. Calcular minutos de espera (basado en SALDO)
+    saldo_actual = mlAcumulados()
+    mins_espera_saldo = 0
+    
+    # Tasa de generación en ml/minuto
+    # intervalo_teorico está en minutos. dosis_plan_hoy en ml.
+    if intervalo_teorico > 0:
+        tasa_gen_ml_min = dosis_plan_hoy / intervalo_teorico
+        if tasa_gen_ml_min > 0 and saldo_actual < dosis_plan_hoy:
+            mins_espera_saldo = (dosis_plan_hoy - saldo_actual) / tasa_gen_ml_min
+
+    return dosis_plan_hoy, intervalo_teorico, mins_espera, mins_espera_saldo
