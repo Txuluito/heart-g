@@ -12,12 +12,13 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import constants # Importar constantes
 
 
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbwUNNchR4XdVwAqkwlfRQ17GjrV3WPqx6bNlPiSRwt31FDk_USG2HAsep06JTLa4X_Q/exec"
+URL_WEB_APP = constants.URL_WEB_APP
 def get_excel_data():
     # Usamos el ID de tu hoja que ya tenías
-    SHEET_ID = "18KYPnVSOQF6I2Lm5P1j5nFx1y1RXSmfMWf9jBR2WJ-Q"
+    SHEET_ID = constants.SHEET_ID
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&cache_bust={int(time.time())}"
 
     df = pd.read_csv(url)
@@ -34,10 +35,10 @@ def get_excel_data():
 def enviar_toma_api( fecha_str, hora_str, cantidad):
     payload = {"fecha": fecha_str, "hora": hora_str, "ml": cantidad}
     return requests.post(URL_WEB_APP, json=payload)
-def get_plan_history_data():
+def get_plan_history_data(sheet_name="Plan Tiempo"):
     """Obtiene el historial del plan desde Google Sheets."""
     try:
-        params = {"action": "get_plan_history"}
+        params = {"action": "get_plan_history", "sheetName": sheet_name}
         response = requests.get(URL_WEB_APP, params=params, timeout=10)
         if response.status_code == 200:
             try:
@@ -50,11 +51,12 @@ def get_plan_history_data():
     except Exception as e:
         print(f"Error cargando historial plan: {e}")
     return pd.DataFrame()
-def save_plan_history_data(df):
+
+def save_plan_history_data(df, sheet_name="Plan Tiempo"):
     """Guarda el historial del plan en Google Sheets."""
     try:
         data_list = df.to_dict(orient='records')
-        payload = {"action": "save_plan_history", "data": data_list}
+        payload = {"action": "save_plan_history", "data": data_list, "sheetName": sheet_name}
         requests.post(URL_WEB_APP, json=payload, timeout=15)
     except Exception as e:
         print(f"Error guardando historial plan: {e}")
