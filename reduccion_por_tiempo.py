@@ -11,6 +11,9 @@ def mlAcumulados():
     if st.session_state.config.get("plan.checkpoint_fecha"):
         # Lógica original para plan por tiempo (reducción continua)
         ml_reduccion_diaria = float(st.session_state.config.get("plan.reduccion_diaria", 0.5))
+        # Obtener la tasa diaria actual (ml/día) desde la configuración
+        ml_dia_actual = float(st.session_state.config.get("consumo.ml_dia", 15.0))
+        
         checkpoint_ml = float(st.session_state.config.get("tiempos.checkpoint_ml"))
         checkpoint_fecha = pd.to_datetime(st.session_state.config.get("plan.checkpoint_fecha"))
 
@@ -18,16 +21,26 @@ def mlAcumulados():
             checkpoint_fecha = checkpoint_fecha.tz_convert('Europe/Madrid')
 
         horas_desde_checkpoint = (pd.Timestamp.now(tz='Europe/Madrid') - checkpoint_fecha).total_seconds() / 3600
-        def integral(t_h):
-            if t_h < 0: return (checkpoint_ml / 24.0) * t_h
-            t_fin = (checkpoint_ml / ml_reduccion_diaria) * 24 if ml_reduccion_diaria > 0 else 999999
-            t_eff = min(t_h, t_fin)
-            return (checkpoint_ml / 24.0) * t_eff - (ml_reduccion_diaria / 1152.0) * (t_eff ** 2)
+        
+        # Cálculo correcto de la generación:
+        # Generado = Integral de (Tasa_actual - Reduccion * t) dt
+        # = Tasa_actual * t - (Reduccion * t^2) / 2
+        # Donde t está en días.
+        
+        t_dias = horas_desde_checkpoint / 24.0
+        
+        # Calcular cuándo la tasa llegaría a 0 para no generar negativo
+        if ml_reduccion_diaria > 0:
+            t_fin_dias = ml_dia_actual / ml_reduccion_diaria
+        else:
+            t_fin_dias = 999999
+            
+        t_eff_dias = min(t_dias, t_fin_dias)
+        
+        generado = (ml_dia_actual * t_eff_dias) - (ml_reduccion_diaria * (t_eff_dias**2) / 2)
 
-        integ= integral(horas_desde_checkpoint)
-
-        print(f"[mlAcumulados] -> checkpoint_ml: {checkpoint_ml},integral: {integ}, checkpoint_fecha: {checkpoint_fecha}, ml_reduccion_diaria: {ml_reduccion_diaria}")
-        return  float(checkpoint_ml + integ)
+        print(f"[mlAcumulados] -> checkpoint_ml: {checkpoint_ml}, generado: {generado}, ml_dia: {ml_dia_actual}")
+        return  float(checkpoint_ml + generado)
 
     else:
         return float(0)
@@ -62,7 +75,7 @@ def obtener_tabla():
     """
     df = get_plan_history_data(sheet_name="Plan Tiempo") # <- CORREGIDO
     if df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['Fecha', 'Objetivo (ml)', 'Real (ml)', 'Reducción Diaria', 'Dosis', 'Estado'])
 
     # Manejo robusto de fechas
     df['Fecha'] = pd.to_datetime(df['Fecha'])
@@ -121,9 +134,21 @@ def add_toma(fecha_toma, ml_toma) -> DataFrame:
     save_plan_history_data(df, sheet_name="Plan Tiempo")
 def dosis_actual():
     df = st.session_state.df_tiempos.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 0
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
     if not row.empty:
         return float(row['Dosis'].iloc[0])
+    else:
+        return 0
+
+def objetivo_ml():
+    df = st.session_state.df_tiempos.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 0
+    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
+    if not row.empty:
+        return float(row['Objetivo (ml)'].iloc[0])
     else:
         return 0
 

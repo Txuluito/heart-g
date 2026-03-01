@@ -71,7 +71,7 @@ def obtener_tabla():
     """
     df = get_plan_history_data(sheet_name="Plan Dosis")
     if df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['Fecha', 'Objetivo (ml)', 'Real (ml)', 'Reducción Diaria', 'Dosis', 'Estado'])
 
     # Manejo robusto de fechas
     df['Fecha'] = pd.to_datetime(df['Fecha'])
@@ -131,6 +131,8 @@ def add_toma(fecha_toma, ml_toma) -> DataFrame:
     save_plan_history_data(df, sheet_name="Plan Dosis")
 def dosis_actual():
     df = st.session_state.df_dosis.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 0
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
     if not row.empty:
         return float(row['Dosis'].iloc[0])
@@ -138,6 +140,8 @@ def dosis_actual():
         return 0
 def intervalo():
     df = st.session_state.df_dosis.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 120
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
     if not row.empty:
         intervalo_str = row['Intervalo'].iloc[0]
