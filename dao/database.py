@@ -12,8 +12,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-import constants # Importar constantes
-
+from config import constants
 
 URL_WEB_APP = constants.URL_WEB_APP
 def get_excel_data():
@@ -115,8 +114,8 @@ def get_google_fit_data():
             creds = Credentials.from_authorized_user_info(token_info, scopes)
     except Exception:
         # 2. SI NO HAY CREDS, BUSCAR ARCHIVO LOCAL (Modo PC)
-        if not creds and os.path.exists('local/token.json'):
-            creds = Credentials.from_authorized_user_file('local/token.json', scopes)
+        if not creds and os.path.exists('../local/token.json'):
+            creds = Credentials.from_authorized_user_file('../local/token.json', scopes)
 
     # 3. Si el token expiró, refrescarlo
     if creds and creds.expired and creds.refresh_token:
@@ -125,8 +124,8 @@ def get_google_fit_data():
 
     # 4. Si no hay credenciales válidas, iniciar flujo (Solo local)
     if not creds or not creds.valid:
-        if os.path.exists('local/credentials.json'):
-            flow = InstalledAppFlow.from_client_secrets_file('local/credentials.json',scopes)
+        if os.path.exists('../local/credentials.json'):
+            flow = InstalledAppFlow.from_client_secrets_file('../local/credentials.json', scopes)
             creds = flow.run_local_server(port=0)
         else:
             st.error("No se han encontrado credenciales de Google. Configura los Secrets en Streamlit Cloud.")

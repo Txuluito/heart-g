@@ -1,11 +1,6 @@
 import streamlit as st
 import pandas as pd
-import database
-import reduccion
-import reduccion_por_dosis
-import logic
-import time
-from datetime import datetime
+from neg import reduccion
 
 from state import invalidate_config
 

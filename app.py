@@ -1,5 +1,6 @@
+import pandas as pd
 import streamlit as st
-import database
+from dao import database
 from tabs.tab_analisis import AnalisisTab
 from tabs.tab_historial import HistorialTab
 from tabs.tab_reduccion import ReduccionTab
@@ -9,7 +10,7 @@ from tabs.tab_toma import TomaTab
 import logging
 from state import load_config # <-- Importa la nueva función
 import streamlit.components.v1 as components
-import constants
+from config import constants
 
 # --- CONFIGURACIÓN DE LOGGING --- (si no la tienes ya)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
@@ -46,6 +47,9 @@ if constants.SHOW_BIO_ANALYSIS:
 
 t_historial = tabs[idx]
 
+df_excel = st.session_state.df_excel.copy()
+fecha_hora_ultima_toma = pd.to_datetime(df_excel.iloc[0]['fecha'] + ' ' + df_excel.iloc[0]['hora'], format='%d/%m/%Y %H:%M:%S').tz_localize('Europe/Madrid')
+
 with t_toma:
     tab = TomaTab(excel_data)
     tab.mostrar_registro()
@@ -57,7 +61,7 @@ with t_plan:
     tab.render()
 with t_red_tiempo:
     st.header("⏱️ Planificación: Reducción por Tiempo")
-    tab = PlanificacionTiempoTab()
+    tab = PlanificacionTiempoTab(excel_data)
     tab.render()
 with t_red_dosis:
     st.header("💊 Planificación: Reducción por Dosis")

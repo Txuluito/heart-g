@@ -2,8 +2,8 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
-import logic
-import database
+from neg import logic
+from dao import database
 from plotly.subplots import make_subplots
 
 
