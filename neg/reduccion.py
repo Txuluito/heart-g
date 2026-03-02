@@ -5,7 +5,6 @@ from neg import reduccion_por_dosis,reduccion_por_tiempo
 # Importa las funciones de base de datos
 from dao.database import save_plan_history_data, save_config, enviar_toma_api
 
-
 def guardar_toma(fecha_toma, hora_toma, ml_toma):
 
     save_config({
@@ -45,6 +44,6 @@ def replanificar(ml_dia_actual, ml_dosis_actual, intervalo_horas,reduccion_diari
        "consumo.ml_dia": ml_dia_actual,
        "consumo.intervalo_minutos": (intervalo_horas.hour * 60) + intervalo_horas.minute,
        "consumo.ml_dosis": ml_dosis_actual,
-       "tiempos.checkpoint_ml":  reduccion_por_tiempo.mlAcumulados(),
-       "dosis.checkpoint_ml":  reduccion_por_dosis.mlAcumulados()
+#        "tiempos.checkpoint_ml":  reduccion_por_tiempo.mlAcumulados(),
+#        "dosis.checkpoint_ml":  reduccion_por_dosis.mlAcumulados()
    })

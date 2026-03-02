@@ -12,11 +12,17 @@ import time
 class TomaTab:
     def __init__(self, df):
         self.df = df
+        st.session_state.visualizacion_activa = st.session_state.config.get("visualizacion_activa", "tiempo")
 
     def mostrar_registro(self):
+
+        if st.session_state.visualizacion_activa == "tiempo":
+            ml_dosis_input      = reduccion_por_tiempo.dosis_actual()
+        else: # 'dosis'
+            ml_dosis_input     = reduccion_por_dosis.dosis_actual()
+
         with st.expander("➕ REGISTRAR TOMA", expanded=False):
             c1, c2, c3 = st.columns(3)
-            ml_dosis_input=self.df.iloc[-1]['ml'].max() if not self.df.empty else 3.2
             c1.number_input(
                 "Dosis Consumida (ml):",
                 0.1, 10.0,
@@ -45,10 +51,6 @@ class TomaTab:
         ahora = pd.Timestamp.now(tz='Europe/Madrid')
         ultima_toma = self.df['timestamp'].max() if not self.df.empty else ahora
         min_desde_ultima_toma = (ahora - ultima_toma).total_seconds() / 60
-        tiempo_en_bote=0
-        # Cargar preferencia guardada si no está en sesión
-        if "visualizacion_activa" not in st.session_state:
-             st.session_state.visualizacion_activa = st.session_state.config.get("visualizacion_activa", "tiempo")
 
         # --- CABECERA CON TÍTULO Y BOTÓN ---
         col_titulo, col_boton = st.columns([3, 1])
@@ -82,12 +84,21 @@ class TomaTab:
         tipo_visualizacion = st.session_state.visualizacion_activa
 
         if tipo_visualizacion == "tiempo":
-            saldo = reduccion_por_tiempo.mlAcumulados()
-            ml_dosis, intervalo_teorico, mins_espera, mins_espera_saldo = reduccion_por_tiempo.calcular_metricas_tiempo(self.df)
-            tiempo_en_bote=reduccion_por_tiempo.mlAminutos(saldo)
+            saldo               = reduccion_por_tiempo.mlAcumulados()
+            intervalo_teorico   = reduccion_por_tiempo.intervalo_teorico()
+            ml_dosis            = reduccion_por_tiempo.dosis_actual()
+            mins_espera         = reduccion_por_tiempo.mins_espera()
+            mins_espera_saldo   = reduccion_por_tiempo.mins_espera_saldo()
+            tiempo_en_bote      = reduccion_por_tiempo.mlAminutos(saldo)
+            tiempo_siguiente_con_bote= reduccion_por_tiempo.minSiguienteDosisConBote()
         else: # 'dosis'
-             saldo = reduccion_por_dosis.mlAcumulados()
-             ml_dosis, intervalo_teorico, mins_espera, mins_espera_saldo = reduccion_por_dosis.calcular_metricas_dosis(self.df)
+             saldo              = reduccion_por_dosis.mlAcumulados()
+             ml_dosis           = reduccion_por_dosis.dosis_actual()
+             intervalo_teorico  = reduccion_por_dosis.intervalo()
+             mins_espera        = reduccion_por_dosis.mins_espera()
+             mins_espera_saldo  = reduccion_por_dosis.mins_espera_saldo()
+             tiempo_en_bote     = reduccion_por_tiempo.mlAminutos(saldo)
+             tiempo_siguiente_con_bote=reduccion_por_tiempo.minSiguienteDosisConBote()
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Dosis Plan", f"{ml_dosis:.2f} ml")
@@ -95,9 +106,9 @@ class TomaTab:
         m3.metric("Intervalo Plan", f"{int(intervalo_teorico // 60)}h {int(intervalo_teorico % 60)}m")
         
         if mins_espera > 0:
-            m4.metric("Siguiente en", f"{int(mins_espera // 60)}h {int(mins_espera % 60)}m", delta="Esperando", delta_color="inverse")
+            m4.metric("Siguiente en", f"{int(mins_espera // 60)}h {int(mins_espera % 60)}m",  delta=f"{int(tiempo_siguiente_con_bote // 60)}h {(tiempo_siguiente_con_bote % 60)}m", delta_color="inverse")
         else:
-            m4.metric("Siguiente", "¡LISTO!", delta="Disponible")
+            m4.metric("Siguiente", "¡LISTO!",  delta=f"{int(tiempo_siguiente_con_bote // 60)}h {(tiempo_siguiente_con_bote % 60)}m")
         
         # Mostrar tiempo de espera por saldo si es relevante
         if mins_espera_saldo > 0:

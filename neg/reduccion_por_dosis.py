@@ -1,40 +1,51 @@
 from datetime import datetime, timedelta
-
+from . import historial
 import pandas as pd
 import streamlit as st
 from pandas import DataFrame
 
 from dao.database import get_plan_history_data, save_plan_history_data
 
-
-def mlAcumulados():
-    if st.session_state.config.get("plan.checkpoint_fecha"):
-        # Usar claves consistentes con reduccion.py, con fallback a las antiguas
-        dosis_actual = float(st.session_state.config.get("consumo.ml_dosis", 3.0))
-
-        intervalo_minutos = st.session_state.config.get("consumo.intervalo_minutos", 120)
-        if intervalo_minutos is None:
-            intervalo_minutos = 120
-        
-        intervalo = float(intervalo_minutos) / 60.0
-
-        # Tasa de generación (ml/hora) = Dosis / Intervalo
-        tasa_generacion = dosis_actual / intervalo if intervalo > 0 else 0
-
-        checkpoint_ml = float(st.session_state.config.get("dosis.checkpoint_ml", 0.0))
-        checkpoint_fecha = pd.to_datetime(st.session_state.config.get("plan.checkpoint_fecha"))
-
-        if checkpoint_fecha.tzinfo is None or checkpoint_fecha.tzinfo.utcoffset(pd.Timestamp.now(tz='Europe/Madrid')) is None:
-            checkpoint_fecha = checkpoint_fecha.tz_localize('UTC').tz_convert('Europe/Madrid')
-        else:
-            checkpoint_fecha = checkpoint_fecha.tz_convert('Europe/Madrid')
-
-        horas_pasadas = (pd.Timestamp.now(tz='Europe/Madrid') - checkpoint_fecha).total_seconds() / 3600
-
-        generado = tasa_generacion * horas_pasadas
-        return float(checkpoint_ml + generado)
+def mins_espera():
+    return  max(0, intervalo() -  historial.minDesdeUltimaToma())
+def mins_espera_saldo():
+    saldo_actual = mlAcumulados()
+    if saldo_actual < dosis_actual():
+       return (dosis_actual() - saldo_actual) / ( dosis_actual() / intervalo())
     else:
-        return float(0)
+        return 0
+def mlAminutos(ml):
+    resultado =(1140 * ml) / objetivo_ml()
+    return int(resultado)
+def minSiguienteDosisConBote():
+    return  mlAminutos(dosis_actual() + mlAcumulados())
+def mlDesdeUltimaToma():
+    return   dosis_actual() / intervalo() * historial.minDesdeUltimaToma()
+def mlAcumulados():
+    return  mlDesdeUltimaToma() + float(st.session_state.config.get("dosis.checkpoint_ml",0))
+
+def dosis_actual():
+    df = st.session_state.df_dosis.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 0
+    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
+    if not row.empty:
+        return float(row['Dosis'].iloc[0])
+    else:
+        return 0
+def intervalo():
+    df = st.session_state.df_dosis.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return 120
+    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
+    if not row.empty:
+        intervalo_str = row['Intervalo'].iloc[0]
+        # Parse "Xh Ym" format
+        parts = intervalo_str.replace('h', ' ').replace('m', '').split()
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    return 120 # Default to 120 minutes
+
 def crear_tabla(reduccion_diaria, ml_dia_actual, intervalo_horas, fecha_inicio=None):
     tabla = []
     fecha_dia = fecha_inicio if fecha_inicio else datetime.now()
@@ -129,51 +140,3 @@ def add_toma(fecha_toma, ml_toma) -> DataFrame:
     if not row.empty:
         df.loc[df["Fecha"] == fecha_toma.strftime('%Y-%m-%d'), 'Real (ml)']+=ml_toma
     save_plan_history_data(df, sheet_name="Plan Dosis")
-def dosis_actual():
-    df = st.session_state.df_dosis.copy()
-    if df.empty or "Fecha" not in df.columns:
-        return 0
-    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
-    if not row.empty:
-        return float(row['Dosis'].iloc[0])
-    else:
-        return 0
-def intervalo():
-    df = st.session_state.df_dosis.copy()
-    if df.empty or "Fecha" not in df.columns:
-        return 120
-    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
-    if not row.empty:
-        intervalo_str = row['Intervalo'].iloc[0]
-        # Parse "Xh Ym" format
-        parts = intervalo_str.replace('h', ' ').replace('m', '').split()
-        if len(parts) == 2:
-            return int(parts[0]) * 60 + int(parts[1])
-    return 120 # Default to 120 minutes
-
-def calcular_metricas_dosis(df_tomas):
-    ahora = pd.Timestamp.now(tz='Europe/Madrid')
-    
-    # 1. Obtener dosis y objetivo del plan para hoy
-    dosis_plan_hoy = dosis_actual()
-    intervalo_teorico = intervalo()
-    
-    # 2. Calcular tiempo desde la última toma
-    ultima_toma_ts = df_tomas['timestamp'].max() if not df_tomas.empty else ahora
-    min_desde_ultima_toma = (ahora - ultima_toma_ts).total_seconds() / 60
-
-    # 3. Calcular minutos de espera (basado en intervalo)
-    mins_espera = max(0, intervalo_teorico - min_desde_ultima_toma)
-
-    # 4. Calcular minutos de espera (basado en SALDO)
-    saldo_actual = mlAcumulados()
-    mins_espera_saldo = 0
-    
-    # Tasa de generación en ml/minuto
-    # intervalo_teorico está en minutos. dosis_plan_hoy en ml.
-    if intervalo_teorico > 0:
-        tasa_gen_ml_min = dosis_plan_hoy / intervalo_teorico
-        if tasa_gen_ml_min > 0 and saldo_actual < dosis_plan_hoy:
-            mins_espera_saldo = (dosis_plan_hoy - saldo_actual) / tasa_gen_ml_min
-
-    return dosis_plan_hoy, intervalo_teorico, mins_espera, mins_espera_saldo

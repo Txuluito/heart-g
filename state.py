@@ -24,7 +24,6 @@ def load_config():
         st.session_state.df_excel = database.get_excel_data()
         logging.info("STATE: df_excel cargada y guardada en session_state.")
 
-    # No es necesario devolver nada, ya que el estado se gestiona en st.session_state
 
 def invalidate_config():
     """
