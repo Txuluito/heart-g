@@ -23,6 +23,8 @@ def mlDesdeUltimaToma():
 def mlAcumulados():
     return  mlDesdeUltimaToma() + float(st.session_state.config.get("tiempos.checkpoint_ml",0))
 def mlAminutos(ml):
+    if objetivo_ml() ==0:
+        return 0
     resultado =(1140 * ml) / objetivo_ml()
     return int(resultado)
 def minutosAml(minutos):
@@ -30,6 +32,8 @@ def minutosAml(minutos):
 def minSiguienteDosisConBote():
     return  mlAminutos(dosis_actual() + mlAcumulados())
 def intervalo_teorico():
+    if dosis_actual ==0 or objetivo_ml() ==0:
+        return 0
     return dosis_actual() / (objetivo_ml() / 1440.0)
 def mins_espera():
     return  max(0, intervalo_teorico() - historial.minDesdeUltimaToma())
@@ -133,9 +137,9 @@ def add_toma(fecha_toma, ml_toma) -> DataFrame:
 def dosis_actual():
     df = st.session_state.df_tiempos.copy()
     if df.empty or "Fecha" not in df.columns:
-        return 0
+        return float(0)
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
     if not row.empty:
         return float(row['Dosis'].iloc[0])
     else:
-        return 0
+        return float(0)

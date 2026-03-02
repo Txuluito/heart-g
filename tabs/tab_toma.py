@@ -25,8 +25,8 @@ class TomaTab:
             c1, c2, c3 = st.columns(3)
             c1.number_input(
                 "Dosis Consumida (ml):",
-                0.1, 10.0,
-                ml_dosis_input,
+                0.0, 10.0,
+                value=ml_dosis_input,
                 help="...",
                 key="dosis_toma"
             )

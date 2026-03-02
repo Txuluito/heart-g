@@ -47,9 +47,6 @@ if constants.SHOW_BIO_ANALYSIS:
 
 t_historial = tabs[idx]
 
-df_excel = st.session_state.df_excel.copy()
-fecha_hora_ultima_toma = pd.to_datetime(df_excel.iloc[0]['fecha'] + ' ' + df_excel.iloc[0]['hora'], format='%d/%m/%Y %H:%M:%S').tz_localize('Europe/Madrid')
-
 with t_toma:
     tab = TomaTab(excel_data)
     tab.mostrar_registro()

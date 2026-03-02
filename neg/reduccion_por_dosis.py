@@ -15,24 +15,35 @@ def mins_espera_saldo():
     else:
         return 0
 def mlAminutos(ml):
+    if objetivo_ml() ==0:
+        return 0
     resultado =(1140 * ml) / objetivo_ml()
     return int(resultado)
 def minSiguienteDosisConBote():
     return  mlAminutos(dosis_actual() + mlAcumulados())
 def mlDesdeUltimaToma():
-    return   dosis_actual() / intervalo() * historial.minDesdeUltimaToma()
+
+    return  objetivo_ml()/(24*60) * historial.minDesdeUltimaToma()
 def mlAcumulados():
     return  mlDesdeUltimaToma() + float(st.session_state.config.get("dosis.checkpoint_ml",0))
-
-def dosis_actual():
-    df = st.session_state.df_dosis.copy()
+def objetivo_ml():
+    df = st.session_state.df_tiempos.copy()
     if df.empty or "Fecha" not in df.columns:
         return 0
     row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
     if not row.empty:
-        return float(row['Dosis'].iloc[0])
+        return float(row['Objetivo (ml)'].iloc[0])
     else:
         return 0
+def dosis_actual():
+    df = st.session_state.df_dosis.copy()
+    if df.empty or "Fecha" not in df.columns:
+        return float(0)
+    row = df[df["Fecha"] == pd.Timestamp.now(tz='Europe/Madrid').strftime('%Y-%m-%d')]
+    if not row.empty:
+        return float(row['Dosis'].iloc[0])
+    else:
+        return float(0)
 def intervalo():
     df = st.session_state.df_dosis.copy()
     if df.empty or "Fecha" not in df.columns:
