@@ -8,7 +8,6 @@ from dao.database import save_plan_history_data, save_config, enviar_toma_api
 def guardar_toma(fecha_toma, hora_toma, ml_toma):
 
     save_config({
-        "plan.checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
         "tiempos.checkpoint_ml": reduccion_por_tiempo.mlAcumulados() - ml_toma,
         "dosis.checkpoint_ml": reduccion_por_tiempo.mlAcumulados() - ml_toma,
     })
@@ -22,7 +21,6 @@ def crear_nuevo_plan(ml_dia_actual, ml_dosis_actual, intervalo_horas,reduccion_d
     save_plan_history_data(reduccion_por_dosis.crear_tabla(reduccion_diaria, ml_dia_actual, intervalo_horas), sheet_name="Plan Dosis")
     save_config({
         "plan.fecha_inicio_plan": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
-        "plan.checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
         "plan.reduccion_diaria": reduccion_diaria,
         "consumo.ml_dia": ml_dia_actual,
         "consumo.intervalo_minutos": (intervalo_horas.hour * 60) + intervalo_horas.minute,
@@ -39,11 +37,8 @@ def replanificar(ml_dia_actual, ml_dosis_actual, intervalo_horas,reduccion_diari
    reduccion_por_dosis.replanificar(reduccion_diaria, ml_dia_actual, intervalo_horas)
    
    save_config({
-       "plan.checkpoint_fecha": pd.Timestamp.now(tz='Europe/Madrid').isoformat(),
        "plan.reduccion_diaria": reduccion_diaria,
        "consumo.ml_dia": ml_dia_actual,
        "consumo.intervalo_minutos": (intervalo_horas.hour * 60) + intervalo_horas.minute,
        "consumo.ml_dosis": ml_dosis_actual,
-#        "tiempos.checkpoint_ml":  reduccion_por_tiempo.mlAcumulados(),
-#        "dosis.checkpoint_ml":  reduccion_por_dosis.mlAcumulados()
    })

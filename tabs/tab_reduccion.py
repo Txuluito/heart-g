@@ -25,7 +25,17 @@ class ReduccionTab:
                         format="%.2f", key="reduccion_diaria")
 
         c1, c2, c3, c4 = st.columns(4)
-        if not st.session_state.config.get("plan.fecha_inicio_plan")  and c4.button("💾 NUEVO PLAN"):
+
+        if st.session_state.config.get("plan.fecha_inicio_plan") and c1.button("💾 Saldo  a 0"):
+           save_config({
+                "plan.fecha_inicio_plan": 0,
+                "plan.checkpoint_fecha": 0,
+           })
+           invalidate_config()
+           st.cache_data.clear()
+           st.rerun()
+
+        if c1.button("💾 NUEVO PLAN"):
             reduccion.crear_nuevo_plan(
                 st.session_state.get("ml_dia_actual"),
                 st.session_state.get("ml_dosis_actual"),
