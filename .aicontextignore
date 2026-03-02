@@ -1,0 +1,7 @@
+/.devcontainer/
+/.streamlit/
+/.venv/
+/local/credentials.json
+/local/token.json
+/*pycache*/
+/tabs/__pycache__

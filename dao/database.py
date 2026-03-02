@@ -1,22 +1,23 @@
+import logging
+
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os.path
 import time
 import requests
-import plotly.graph_objects as go
 import json
+
 from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from plotly.subplots import make_subplots
+from config import constants
 
-URL_WEB_APP = "https://script.google.com/macros/s/AKfycbyjfrStGaO5O5j1JMSUFW2aN4u9LPcbe1-Hz96OUUmYMrF0odJ_Txcc40fhGiegCx3j/exec"
+URL_WEB_APP = constants.URL_WEB_APP
 def get_excel_data():
     # Usamos el ID de tu hoja que ya tenías
-    SHEET_ID = "18KYPnVSOQF6I2Lm5P1j5nFx1y1RXSmfMWf9jBR2WJ-Q"
+    SHEET_ID = constants.SHEET_ID
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&cache_bust={int(time.time())}"
 
     df = pd.read_csv(url)
@@ -30,16 +31,13 @@ def get_excel_data():
         df['timestamp'] = df['timestamp'].dt.tz_localize('Europe/Madrid')
 
     return df.sort_values('timestamp', ascending=False)
-
-
-def enviar_toma_api( fecha_str, hora_str, cantidad, saldo=None):
-    payload = {"fecha": fecha_str, "hora": hora_str, "ml": cantidad, "saldo": saldo}
+def enviar_toma_api( fecha_str, hora_str, cantidad):
+    payload = {"fecha": fecha_str, "hora": hora_str, "ml": cantidad}
     return requests.post(URL_WEB_APP, json=payload)
-
-def get_plan_history_data():
+def get_plan_history_data(sheet_name="Plan Tiempo"):
     """Obtiene el historial del plan desde Google Sheets."""
     try:
-        params = {"action": "get_plan_history"}
+        params = {"action": "get_plan_history", "sheetName": sheet_name}
         response = requests.get(URL_WEB_APP, params=params, timeout=10)
         if response.status_code == 200:
             try:
@@ -53,17 +51,17 @@ def get_plan_history_data():
         print(f"Error cargando historial plan: {e}")
     return pd.DataFrame()
 
-def save_plan_history_data(df):
+def save_plan_history_data(df, sheet_name="Plan Tiempo"):
     """Guarda el historial del plan en Google Sheets."""
     try:
         data_list = df.to_dict(orient='records')
-        payload = {"action": "save_plan_history", "data": data_list}
+        payload = {"action": "save_plan_history", "data": data_list, "sheetName": sheet_name}
         requests.post(URL_WEB_APP, json=payload, timeout=15)
     except Exception as e:
         print(f"Error guardando historial plan: {e}")
-
-def get_remote_config():
+def get_config():
     """Obtiene la configuración desde la hoja 'Config'."""
+    logging.warning("Cargando configuracion")
     try:
         params = {"action": "get_config"}
         response = requests.get(URL_WEB_APP, params=params, timeout=15)
@@ -71,14 +69,16 @@ def get_remote_config():
             try:
                 json_response = response.json()
                 if json_response.get('status') == 'success':
-                    return json_response.get('data', {})
+                    config =json_response.get('data', {})
+                    print(f"{config}")
+                    return config
             except ValueError:
                 print(f"Error decodificando config JSON de Sheets: {response.text[:200]}")
     except Exception as e:
         print(f"Error cargando config remota: {e}")
     return {}
 
-def save_remote_config(data):
+def save_config(data):
     """Guarda/Actualiza la configuración en la hoja 'Config'."""
     try:
         payload = {"action": "save_config", "data": data}
@@ -87,7 +87,6 @@ def save_remote_config(data):
     except Exception as e:
         print(f"Error guardando config remota: {e}")
         return False
-
 def eliminar_ultima_toma():
     try:
         # Enviamos una petición POST con un parámetro especial para indicar borrado
@@ -104,7 +103,6 @@ def eliminar_ultima_toma():
     except Exception as e:
         print(f"Error al eliminar: {e}")
         return False
-
 def get_google_fit_data():
     creds = None
     scopes = ['https://www.googleapis.com/auth/fitness.heart_rate.read']
@@ -116,8 +114,8 @@ def get_google_fit_data():
             creds = Credentials.from_authorized_user_info(token_info, scopes)
     except Exception:
         # 2. SI NO HAY CREDS, BUSCAR ARCHIVO LOCAL (Modo PC)
-        if not creds and os.path.exists('local/token.json'):
-            creds = Credentials.from_authorized_user_file('local/token.json', scopes)
+        if not creds and os.path.exists('../local/token.json'):
+            creds = Credentials.from_authorized_user_file('../local/token.json', scopes)
 
     # 3. Si el token expiró, refrescarlo
     if creds and creds.expired and creds.refresh_token:
@@ -126,8 +124,8 @@ def get_google_fit_data():
 
     # 4. Si no hay credenciales válidas, iniciar flujo (Solo local)
     if not creds or not creds.valid:
-        if os.path.exists('local/credentials.json'):
-            flow = InstalledAppFlow.from_client_secrets_file('local/credentials.json',scopes)
+        if os.path.exists('../local/credentials.json'):
+            flow = InstalledAppFlow.from_client_secrets_file('../local/credentials.json', scopes)
             creds = flow.run_local_server(port=0)
         else:
             st.error("No se han encontrado credenciales de Google. Configura los Secrets en Streamlit Cloud.")
