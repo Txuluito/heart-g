@@ -8,7 +8,7 @@ from state import invalidate_config
 class ReduccionTab:
     def render(self):
         c1, c2, c3, c4 = st.columns(4)
-
+ 
         c1.number_input("Consumo diario actual (ml/día)", value=float(st.session_state.config.get("plan.ml_dia", 15.0)),
                         step=0.5, key="ml_dia_actual")
 
