@@ -142,6 +142,11 @@ def replanificar(reduccion_diaria, ml_dia_actual, intervalo_horas):
         df_nuevo.loc[df_nuevo['Fecha'] == fecha_hoy, 'Real (ml)']= fila_hoy_antigua['Real (ml)']
     df_plan = df_plan[df_plan["Fecha"] < fecha_hoy]
     df_final = pd.concat([df_plan, df_nuevo], ignore_index=True)
+
+    # Sanitize to avoid JSON errors
+    df_final = df_final.replace([float('inf'), float('-inf')], 0)
+    df_final = df_final.fillna(0)
+
     save_plan_history_data(df_final, sheet_name="Plan Dosis")
     print(f"Plan replanificado en la hoja 'PlanHistory'.")
 

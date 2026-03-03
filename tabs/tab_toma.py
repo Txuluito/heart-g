@@ -97,8 +97,8 @@ class TomaTab:
              intervalo_teorico  = reduccion_por_dosis.intervalo()
              mins_espera        = reduccion_por_dosis.mins_espera()
              mins_espera_saldo  = reduccion_por_dosis.mins_espera_saldo()
-             tiempo_en_bote     = reduccion_por_tiempo.mlAminutos(saldo)
-             tiempo_siguiente_con_bote=reduccion_por_tiempo.minSiguienteDosisConBote()
+             tiempo_en_bote     = reduccion_por_dosis.mlAminutos(saldo)
+             tiempo_siguiente_con_bote=reduccion_por_dosis.minSiguienteDosisConBote()
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Dosis Plan", f"{ml_dosis:.2f} ml")
